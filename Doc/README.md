@@ -16,7 +16,7 @@ Helper 팀의 발표 자료, 보고서, 회의록을 모아 두는 폴더입니�
 |---|---|---|
 | 1_1 | 수행계획서 | [1_1_OSSProj_03_Helper_수행계획서.pdf](1_1_OSSProj_03_Helper_수행계획서.pdf) |
 | 1_2 | 수행계획 발표자료 | [1_2_OSSProj_03_Helper_수행계획발표자료.pptx](1_2_OSSProj_03_Helper_수행계획발표자료.pptx) |
-| 1_3 | 회의록 (1~5차) | [1_3_OSSProj_03_Helper_회의록.pdf](1_3_OSSProj_03_Helper_회의록.pdf) |
+| 1_3 | 회의록 (1\~5차) | [1_3_OSSProj_03_Helper_회의록.pdf](1_3_OSSProj_03_Helper_회의록.pdf) |
 | 1_6 | 제안발표 질의답변 | 발표 후 1주 이내에 추가 |
 
 ### 중간 발표 (2026.11.5)
