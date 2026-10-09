@@ -1,0 +1,98 @@
+:root {
+  --bg: #1e2027;
+  --panel: #2a2d36;
+  --text: #e8e9ee;
+  --muted: #9a9db0;
+  --accent: #6b5fd3;
+  --ok: #3fbf8a;
+  --warn: #e0a43a;
+  --danger: #e0605a;
+
+  color-scheme: dark;
+  font-family: 'Pretendard', 'Noto Sans KR', system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 12px;
+}
+
+.error {
+  color: var(--danger);
+}
+
+/* 임시 시작 패널 */
+.start {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+.start h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.start p {
+  margin: 0;
+}
+
+.start label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.start input {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid #4a4e5c;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.conn-open {
+  color: var(--ok);
+}
+
+.conn-connecting {
+  color: var(--warn);
+}
+
+.conn-closed {
+  color: var(--danger);
+}

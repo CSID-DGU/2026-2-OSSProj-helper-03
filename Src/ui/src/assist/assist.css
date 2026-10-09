@@ -1,0 +1,511 @@
+/* 보조 화면. 노트북 화면 절반 폭(약 680~960px)에서 보는 것을 기준으로 한다. */
+
+.assist {
+  --gap: 12px;
+  --radius: 8px;
+  --row: #2f323c;
+  --song: #8fd16a; /* 노래 구간 = 연두. 복귀 파랑과 구분 */
+  /* 이탈 중 = 빨강, 복귀 = 파랑 */
+  --during-border: #e5484d;
+  --during-bg: #3b1a1c;
+  --during-text: #ffd2d2;
+  --returned-border: #4c8dff;
+  --returned-bg: #e8f0ff;
+  --returned-text: #0f3a8a;
+  --returned-light: #a9c8ff;
+
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--gap);
+  height: 100vh;
+  padding: 16px;
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ── 상단 ── */
+
+.assist-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.show-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 13px;
+  border: 1px solid #4a4e5c;
+  border-radius: 6px;
+}
+
+.badge-ok {
+  color: #b8f0d5;
+  background: #1d4a37;
+  border-color: #1d4a37;
+}
+
+.badge-warn {
+  color: #ffe2a8;
+  background: #4f3a12;
+  border-color: #4f3a12;
+}
+
+/* 엔진 문제는 이탈(빨간 면)과 헷갈리지 않게 회색 면 + 빨간 점선 */
+.badge-error {
+  color: #ffd0cd;
+  background: #3a3c45;
+  border: 1px dashed var(--danger);
+}
+
+.badge-song {
+  color: var(--song);
+  border-color: var(--song);
+}
+
+.level {
+  width: 40px;
+  height: 4px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 20%);
+  border-radius: 2px;
+}
+
+.level > span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition: width 0.3s;
+}
+
+.latency {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+button.ghost {
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid #4a4e5c;
+}
+
+button.ghost:hover {
+  color: var(--text);
+}
+
+button.small {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+/* ── 본문 ── */
+
+.assist-body {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.panel {
+  padding: 12px;
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
+  margin-bottom: 8px;
+}
+
+/* ③ 대본 목록 */
+
+.script {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.script-list {
+  position: relative; /* 줄의 offsetTop 기준 */
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.cue {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  margin: 2px 0;
+  font-size: 15px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.cue-id {
+  font-variant-numeric: tabular-nums;
+}
+
+.cue-speaker {
+  margin-left: 8px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.cue-type {
+  margin-right: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  border: 1px solid currentcolor;
+  border-radius: 4px;
+}
+
+.cue-lyric {
+  color: var(--song);
+}
+
+.cue-sound,
+.cue-blackout,
+.cue-notice {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+/* ① 현재 위치 */
+.cue-current {
+  font-weight: 700;
+  color: var(--text);
+  background: var(--row);
+  border-color: var(--accent);
+}
+
+.cue-uncertain {
+  border-style: dashed;
+  border-color: var(--warn);
+}
+
+.cue-paused {
+  opacity: 0.6;
+}
+
+.cue-return:not(.cue-current) {
+  color: var(--text);
+  border-color: var(--returned-bg);
+}
+
+.cue-tags {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.cue-tag {
+  font-size: 12px;
+  font-weight: 400;
+  color: #c9c3ff;
+  white-space: nowrap;
+}
+
+.cue-uncertain .cue-tag {
+  color: var(--warn);
+}
+
+.tag-return {
+  padding: 1px 8px;
+  color: var(--returned-text);
+  background: var(--returned-bg);
+  border-radius: 4px;
+}
+
+/* ② 이탈 알림 */
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.card {
+  padding: 16px 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+}
+
+.card-meta {
+  margin: 0 0 6px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.card-body {
+  margin: 10px 0 0;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.card-cue {
+  margin: 12px 0 0;
+  font-size: 56px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-cue-text {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.card-recent {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.card-idle {
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.card-idle .card-title {
+  color: var(--text);
+}
+
+.card-during {
+  color: var(--during-text);
+  background: var(--during-bg);
+  border-color: var(--during-border);
+}
+
+.card-returned {
+  color: var(--returned-text);
+  background: var(--returned-bg);
+  border-color: var(--returned-border);
+  animation: arrive 0.4s ease-out;
+}
+
+.card-hold {
+  color: var(--muted);
+  background: var(--panel);
+  border-color: #4a4e5c;
+  border-style: dashed;
+}
+
+.card-error {
+  color: var(--text);
+  background: #3a3c45;
+  border: 2px dashed var(--danger);
+}
+
+.card-error .card-title {
+  color: #ffb3ae;
+}
+
+@keyframes arrive {
+  from {
+    transform: scale(0.97);
+    opacity: 0.4;
+  }
+}
+
+.notes {
+  margin: 0;
+  padding: 0 0 0 16px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+/* 이탈 기록 */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.timeline .panel-head {
+  margin-bottom: 4px;
+}
+
+.timeline-count,
+.timeline-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.timeline-list {
+  max-height: 132px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.timeline-list li {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid #383b46;
+}
+
+.timeline-list li:first-child {
+  border-top: 0;
+}
+
+.timeline-list time,
+.timeline-duration {
+  color: var(--muted);
+}
+
+.timeline-return {
+  font-weight: 700;
+  color: var(--returned-light);
+}
+
+.timeline-during .timeline-type,
+.timeline-during .timeline-duration {
+  color: var(--during-border);
+}
+
+/* 화면 가장자리 깜빡임 */
+
+.edge {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.edge-during {
+  --edge: var(--during-border);
+}
+
+.edge-return {
+  --edge: var(--returned-border);
+}
+
+/* 0.5초 주기로 3번. 초당 3회 이하라 빛 민감성 기준 안쪽 */
+.edge-flash {
+  animation: edge-flash 0.5s ease-in-out 3;
+}
+
+.edge-steady {
+  box-shadow: inset 0 0 0 3px var(--edge);
+}
+
+@keyframes edge-flash {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+
+  50% {
+    box-shadow:
+      inset 0 0 0 8px var(--edge),
+      inset 0 0 48px var(--edge);
+  }
+}
+
+/* 움직임 줄이기 설정이면 이탈 알림을 깜빡이지 않고 한 번만 천천히 켰다 끈다 */
+@keyframes edge-fade {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+
+  30%,
+  70% {
+    box-shadow:
+      inset 0 0 0 6px var(--edge),
+      inset 0 0 32px var(--edge);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge-flash {
+    animation: edge-fade 1.5s ease-in-out 1;
+  }
+}
+
+/* ⑤ 인식 글자 */
+
+.transcript p {
+  margin: 6px 0 0;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 좁은 화면: 알림 카드를 위로 */
+@media (max-width: 760px) {
+  .assist {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .assist-body {
+    grid-template-columns: 1fr;
+  }
+
+  .side {
+    order: -1;
+  }
+
+  .script {
+    height: 55vh;
+  }
+
+  .timeline-list {
+    max-height: 84px;
+  }
+
+  .card-cue {
+    font-size: 44px;
+  }
+}
