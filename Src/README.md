@@ -80,6 +80,17 @@ python -m pytest
 
 저장소에 있는 샘플 대본(`ui/mock/sample_cues.csv`)과 가짜 음성인식만 써서, 소리 · 키 · 공연 데이터 없이 돈다. `tests/test_protocol.py`는 엔진 메시지 필드가 `ui/src/protocol.ts`와 같은지 확인하므로, 화면 규약이 바뀌면 여기서 먼저 깨진다.
 
+### 자동 테스트 (GitHub Actions)
+
+PR을 올리거나 main에 합쳐지면 `.github/workflows/test.yml`이 자동으로 돈다. 결과는 PR 화면의 체크(✅ / ❌)와 저장소 **Actions** 탭에서 본다.
+
+| 검사 | 하는 일 |
+|---|---|
+| 엔진 (pytest) | Python 3.11에 `requirements-test.txt`만 설치하고 `python -m pytest` |
+| 화면 (lint · build) | Node 22에서 `npm ci` → `npm run lint` → `npm run build` |
+
+`requirements-test.txt`는 테스트에 필요한 가벼운 패키지만 담는다 (음성인식 라이브러리 제외). 새 테스트가 다른 패키지를 쓰면 여기에도 추가한다.
+
 ## 올리지 않는 파일
 
 - 공연 대본, 자막 큐 파일, 공연 음원: 제작사 자산이라 저장소에 올리지 않습니다. 테스트에는 직접 만든 예시 큐 파일을 씁니다.
