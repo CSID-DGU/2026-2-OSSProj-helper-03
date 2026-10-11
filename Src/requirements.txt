@@ -1,0 +1,17 @@
+# Helper 엔진 · 로컬 서버 (Python 3.11 이상)
+fastapi
+uvicorn[standard]
+numpy
+soundfile
+rapidfuzz
+jamo
+python-dotenv
+
+# ③ 음성인식 (쓰는 것만 있어도 됨)
+faster-whisper        # 로컬 (기본)
+google-cloud-speech   # Google Speech-to-Text V2
+grpcio                # CLOVA Speech 스트리밍
+
+# 테스트
+pytest
+httpx

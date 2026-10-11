@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# 키 · 비밀 (절대 올리지 않기)
+.env
+keys/
+*-credentials*.json
+
+# 공연 대본 · 음원 · 모델 (제작사 자산, 용량)
+data/
+*.wav
+*.mp3
+models/
