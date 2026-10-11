@@ -6,7 +6,7 @@
   (긴 문장이 아주 잘 맞으면 앞으로 크게 가도 바로 이동)
 - 몇 번 연속 안 맞으면 '놓침' → 현재 위치부터 대본 끝까지 다시 찾는다
 
-기준값은 1차 데이터(kuroi) 실험의 추천값 (accept 65, ahead 15, strong 85).
+기준값은 1차 데이터 실험의 추천값 (accept 65, ahead 15, strong 85).
 """
 from bisect import bisect_right
 from dataclasses import dataclass
