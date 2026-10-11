@@ -11,7 +11,7 @@ def test_sample_csv_ui_format(sample_cues):
 
 
 def test_data_format_with_korean_types():
-    src = "﻿cue_id,act,scene,type,speaker,text_ko\n1,1,1,대사,해웅,비켜봐.\n2,1,1,가사,해웅,길을 만드네\n3,1,1,음향,,풍금 소리\n"
+    src = "﻿cue_id,act,scene,type,speaker,text_ko\n1,1,1,대사,민수,안녕하세요.\n2,1,1,가사,민수,바람이 부네\n3,1,1,음향,,문 닫히는 소리\n"
     cues = parse_cues(src)
     assert [(c.id, c.order, c.type) for c in cues] == [(1, 1, "dialogue"), (2, 2, "lyric"), (3, 3, "sound")]
 
@@ -32,4 +32,4 @@ def test_to_ui_csv_round_trip(sample_cues):
 
 
 def test_jamo_ignores_symbols():
-    assert to_jamo("비켜봐!") == to_jamo("비켜 봐.") == "ㅂㅣㅋㅕㅂㅘ"
+    assert to_jamo("안녕!") == to_jamo("안 녕.") == "ㅇㅏㄴㄴㅕㅇ"
