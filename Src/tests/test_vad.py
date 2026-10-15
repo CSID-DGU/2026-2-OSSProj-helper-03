@@ -54,6 +54,12 @@ def test_gate_skips_chunks_without_input():
     assert gate.mode == "chunk" and gate.label == "fake+vad(fake)"
 
 
+def test_gate_keeps_engine_workers():
+    stt = FakeSTT([])
+    stt.workers = 3          # 클라우드 엔진처럼 동시에 여러 요청
+    assert VADGate(stt, FakeVAD([])).workers == 3
+
+
 def test_gate_sends_when_vad_fails():
     stt = FakeSTT(["글자"])
     gate = VADGate(stt, FakeVAD([RuntimeError("모델 없음")]))

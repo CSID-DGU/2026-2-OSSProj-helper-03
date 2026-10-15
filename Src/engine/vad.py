@@ -124,7 +124,7 @@ class VADGate(STTEngine):
 
     def __init__(self, stt: STTEngine, vad: SileroVAD | None = None):
         self.stt, self.vad = stt, vad or default_vad()
-        self.key, self.mode = stt.key, stt.mode
+        self.key, self.mode, self.workers = stt.key, stt.mode, stt.workers   # 동시 요청 수도 감싼 엔진 것을 그대로
         self.label = f"{stt.label}+vad({self.vad.name})"
         self.calls = self.skipped = 0
 
