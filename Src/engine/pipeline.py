@@ -43,7 +43,7 @@ class Pipeline:
     def __init__(self, cues: list[Cue], audio: np.ndarray | FileSource | MicSource, stt: STTEngine,
                  emit: Callable[[dict], None], *,
                  hints: bool = True, chunk_sec: float = 3.0, hop_sec: float | None = None,
-                 deviate_after: float = 6.0,
+                 deviate_after: float = 3.0,
                  speed: float = 1.0, song_segment: bool = True, stt_workers: int | None = None):
         self.aligner = Aligner(cues)
         self.detector = DeviationDetector(deviate_after)

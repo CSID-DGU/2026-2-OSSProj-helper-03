@@ -99,7 +99,7 @@ def start_session(msg: dict, emit) -> Pipeline:
                     hints=env("HELPER_HINTS", "1") != "0",
                     chunk_sec=env_float("HELPER_CHUNK_SEC", 3.0),
                     hop_sec=env_float("HELPER_HOP_SEC", 0.0) or None,
-                    deviate_after=env_float("DEVIATE_AFTER_SEC", 6.0),
+                    deviate_after=env_float("DEVIATE_AFTER_SEC", 3.0),
                     speed=speed)
     pipe.start()
     return pipe
