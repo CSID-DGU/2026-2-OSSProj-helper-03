@@ -7,6 +7,9 @@ rapidfuzz
 jamo
 python-dotenv
 
+# ② 마이크 입력 (HELPER_INPUT=mic 일 때만 씀)
+sounddevice
+
 # ③ 음성인식 (쓰는 것만 있어도 됨)
 faster-whisper        # 로컬 (기본)
 google-cloud-speech   # Google Speech-to-Text V2

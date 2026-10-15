@@ -1,7 +1,7 @@
 """②~⑤ 연결: 오디오 → 음성인식 → 위치 추적 → 이탈 감지 → 화면 메시지.
 
 스레드 3개로 돈다 (음성인식이 느려도 소리 재생 · 상태 보내기가 끊기지 않게).
-- 재생: FileSource 가 실제 시간 속도로 소리를 흘려보냄
+- 재생: FileSource(녹음, 실제 시간 속도) 또는 MicSource(마이크)가 소리를 흘려보냄
 - 인식: 조각 방식이면 chunk_sec 마다 최근 소리를 인식 / 스트리밍이면 결과가 올 때마다
 - 상태: 1초마다 input.status (화면은 5초간 메시지가 없으면 '엔진 응답 없음')
 """
@@ -14,7 +14,7 @@ from collections.abc import Callable
 import numpy as np
 
 from .aligner import Aligner
-from .audio_input import FileSource
+from .audio_input import FileSource, MicSource
 from .cue_loader import Cue
 from .deviation import DeviationDetector
 from .protocol import deviation_alert, input_status, position_update
@@ -38,13 +38,15 @@ def implausible(text: str, prev: str, dur_sec: float) -> bool:
 
 
 class Pipeline:
-    def __init__(self, cues: list[Cue], audio: np.ndarray, stt: STTEngine, emit: Callable[[dict], None], *,
+    def __init__(self, cues: list[Cue], audio: np.ndarray | FileSource | MicSource, stt: STTEngine,
+                 emit: Callable[[dict], None], *,
                  hints: bool = True, chunk_sec: float = 3.0, hop_sec: float | None = None,
                  deviate_after: float = 6.0,
                  speed: float = 1.0, song_segment: bool = True):
         self.aligner = Aligner(cues)
         self.detector = DeviationDetector(deviate_after)
-        self.source = FileSource(audio, speed)
+        # 녹음(ndarray)이면 파일 재생, 아니면 받은 소리 원천(MicSource 등)을 그대로 쓴다
+        self.source = FileSource(audio, speed) if isinstance(audio, np.ndarray) else audio
         self.stt, self.emit = stt, emit
         self.hints, self.chunk_sec, self.speed = hints, chunk_sec, speed
         self.hop_sec = hop_sec or chunk_sec    # 조각을 보내는 간격. chunk_sec 보다 짧으면 겹쳐 보냄
