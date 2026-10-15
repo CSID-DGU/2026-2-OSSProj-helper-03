@@ -31,6 +31,7 @@ class Cue:
     speaker: str
     text: str
     jamo: str = ""  # 정규화 + 자모 분해 (추적용)
+    scene: str = ""  # 막-장 ("1-2"). act · scene 열이 있을 때만 (놓친 뒤 다시 찾는 범위를 장면으로 제한)
 
 
 def normalize(text: str) -> str:
@@ -67,7 +68,9 @@ def parse_cues(source: str) -> list[Cue]:
         if ctype is None:
             raise ValueError(f'{line}번째 줄: 알 수 없는 유형 "{r.get("type")}"')
         text = (r.get(text_col) or "").strip()
-        cues.append(Cue(cid, order, ctype, (r.get("speaker") or "").strip(), text, to_jamo(text)))
+        act, scene = (r.get("act") or "").strip(), (r.get("scene") or "").strip()
+        cues.append(Cue(cid, order, ctype, (r.get("speaker") or "").strip(), text, to_jamo(text),
+                        f"{act}-{scene}" if act or scene else ""))
     return sorted(cues, key=lambda c: c.order)
 
 

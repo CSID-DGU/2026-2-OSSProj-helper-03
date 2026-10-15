@@ -43,7 +43,7 @@ class Pipeline:
     def __init__(self, cues: list[Cue], audio: np.ndarray | FileSource | MicSource, stt: STTEngine,
                  emit: Callable[[dict], None], *,
                  hints: bool = True, chunk_sec: float = 3.0, hop_sec: float | None = None,
-                 deviate_after: float = 6.0,
+                 deviate_after: float = 3.0,
                  speed: float = 1.0, song_segment: bool = True, stt_workers: int | None = None):
         self.aligner = Aligner(cues)
         self.detector = DeviationDetector(deviate_after)
@@ -115,9 +115,11 @@ class Pipeline:
         # → 멈추면 화면이 5초 뒤 '엔진 응답 없음'으로 오해한다
         while not self.stopped.is_set():
             ended = self.source.done.is_set()
+            level = 0.0 if ended else self.source.level
             with self.lock:
                 seg = "dialogue" if ended else self._segment()
-            self.emit(input_status(0.0 if ended else self.source.level, seg))
+                self.detector.tick(int(time.time() * 1000), level)   # 오래 조용하면 '입력 없음' (알림 안 보냄)
+            self.emit(input_status(level, seg))
             self.stopped.wait(1.0)
 
     # ── 조각 방식 ────────────────────────────────────────────

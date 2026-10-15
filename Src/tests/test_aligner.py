@@ -76,3 +76,79 @@ def test_lost_prefers_nearest_repeat():
     assert al.lost
     al.update("자 이제 해봅시다")
     assert al.current.id == 3                          # 9번이 아니라 가까운 3번
+
+
+def test_jump_over_unheard_lines_reports_skipped(sample_cues):
+    """배우가 대사 두 줄을 건너뛰면, 지나친 두 줄이 Step.skipped 에 들어간다 (누락 근거)."""
+    al = Aligner(sample_cues)
+    lines = dialogue(sample_cues)
+    al.update(lines[0].text)
+    al.update(lines[1].text)
+    step = al.update(lines[4].text)
+    assert step.matched and al.current.id == lines[4].id
+    assert [c.id for c in step.skipped] == [lines[2].id, lines[3].id]
+
+
+def test_passing_heard_lines_is_not_a_skip(sample_cues):
+    """한 조각에 여러 줄이 들어 있어 한 번에 지나가도, 들은 줄은 skipped 가 아니다."""
+    al = Aligner(sample_cues)
+    lines = dialogue(sample_cues)
+    al.update(lines[0].text)
+    step = al.update(" ".join(c.text for c in lines[1:4]))
+    assert al.current.id == lines[3].id and step.skipped == ()
+
+
+def test_going_back_to_a_heard_line_is_again(sample_cues):
+    al = Aligner(sample_cues)
+    lines = dialogue(sample_cues)
+    for c in lines[:5]:
+        al.update(c.text)
+    al.update(lines[2].text)
+    step = al.update(lines[2].text)               # 뒤로 가는 이동은 두 번 확인
+    assert step.matched and al.current.id == lines[2].id and step.again
+
+
+def _scene_cues(with_scene: bool):
+    from engine.cue_loader import parse_cues
+    words = ["처음 인사를 드립니다", "오늘은 날씨가 맑네요", "점심은 무엇을 먹을까", "저녁에는 비가 온대요",
+             "우산을 챙겨야겠네요", "버스가 곧 도착합니다", "다음 역에서 내려요", "모두 수고하셨습니다",
+             "창문을 조금 열어 둘까", "커피를 한 잔 더 주세요", "내일 아침에 다시 만나요", "기차표를 미리 사 두었어"]
+    if with_scene:   # 장면 셋: 1-1 (1~4), 1-2 (5~8), 2-1 (9~12)
+        rows = ["cue_id,act,scene,type,speaker,text_ko"]
+        rows += [f"{i},{1 if i <= 8 else 2},{1 if i <= 4 or i > 8 else 2},대사,가,{w}" for i, w in enumerate(words, 1)]
+    else:
+        rows = ["id,order,type,speaker,text"] + [f"{i},{i},dialogue,가,{w}" for i, w in enumerate(words, 1)]
+    return parse_cues("\n".join(rows) + "\n")
+
+
+def lose(al):
+    al.update("오늘은 날씨가 맑네요")
+    for _ in range(3):
+        al.update("전혀 상관없는 이야기를 길게 합니다")
+    assert al.lost
+
+
+def test_lost_search_stays_in_scene_and_next_scene():
+    cues = _scene_cues(True)
+    assert cues[0].scene == "1-1" and cues[8].scene == "2-1"
+    al = Aligner(cues, ahead=1)
+    lose(al)
+    al.update("내일 아침에 다시 만나요")              # 2막 1장 (현재 장면 + 다음 장면 밖) → 못 감
+    assert al.current.id == 2
+    al.update("다음 역에서 내려요")                   # 다음 장면(1막 2장)은 찾는다
+    al.update("다음 역에서 내려요")
+    assert al.current.id == 7
+
+
+def test_lost_search_window_without_scene_info():
+    cues = _scene_cues(False)
+    assert cues[0].scene == ""
+    al = Aligner(cues, ahead=1, lost_window=4)
+    lose(al)
+    al.update("내일 아침에 다시 만나요")              # 11번: 4큐 창 밖
+    assert al.current.id == 2
+    al = Aligner(cues, ahead=1, lost_window=0)        # 0 = 끝까지 (개선 전)
+    lose(al)
+    al.update("내일 아침에 다시 만나요")
+    al.update("내일 아침에 다시 만나요")
+    assert al.current.id == 11
