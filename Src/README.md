@@ -97,6 +97,8 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 cd Src
 # 실제 음성인식으로 처음부터 (대본 힌트가 추적 위치를 따라 바뀜, 실시간으로 기다리지 않음)
 python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --audio <녹음.wav> --engine whisper --chunk 3 --save <인식결과.jsonl>
+# 실시간: 실제 Pipeline 을 녹음 길이만큼 돌려 화면에 보인 그대로 (처리 시간 · 동시 요청 · 건너뛴 조각까지 반영)
+python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --audio <녹음.wav> --engine google --hop 1.5 --realtime --workers 3 --save <기록.jsonl>
 # 저장해 둔 인식 결과로 추적기만 다시 (몇 초)
 python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --results <인식결과.jsonl>
 # 개선 전 추적기와 비교 / 설정 바꿔 보기
