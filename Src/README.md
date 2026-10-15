@@ -50,6 +50,7 @@ uvicorn server.main:app --port 8000
 | `HELPER_MIC_DEVICE` | 마이크 장치 번호 또는 이름 일부. 비우면 기본 장치 (`python -m engine.audio_input --list`로 확인) |
 | `HELPER_STT` | `whisper`(로컬, 기본) / `google`(chirp_3 3초 조각) / `google_stream`(long 실시간) / `clova_stream` |
 | `HELPER_CHUNK_SEC` / `HELPER_HOP_SEC` | 음성인식에 보내는 조각 길이 / 간격. 간격을 짧게 하면 조각이 겹쳐 반응이 빨라지지만 CPU · API 사용량이 늘어남 |
+| `HELPER_STT_WORKERS` | 조각 인식 요청을 동시에 몇 개까지 보낼지. 비우면 엔진 기본값 (whisper 1 · google 3). 인식 한 번이 간격보다 오래 걸려도 (chirp_3 요청당 1~2초, p95 2.2초) 밀리지 않게 겹쳐 보냄 |
 | `HELPER_HINTS` | `1`이면 현재 큐 + 다음 3큐를 음성인식에 힌트로 줌 (1차 실험에서 정확도가 가장 크게 오른 방법) |
 | `HELPER_VAD` | `1`이면 조용하고 말소리도 없는 조각은 음성인식에 보내지 않음 (조각 방식 엔진만. API 비용 절약 · 무음에서 힌트를 지어내는 것 줄이기) |
 | `DEVIATE_AFTER_SEC` | 말소리가 이 시간 동안 대본과 안 맞으면 이탈 알림 |
@@ -96,6 +97,8 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 cd Src
 # 실제 음성인식으로 처음부터 (대본 힌트가 추적 위치를 따라 바뀜, 실시간으로 기다리지 않음)
 python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --audio <녹음.wav> --engine whisper --chunk 3 --save <인식결과.jsonl>
+# 실시간: 실제 Pipeline 을 녹음 길이만큼 돌려 화면에 보인 그대로 (처리 시간 · 동시 요청 · 건너뛴 조각까지 반영)
+python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --audio <녹음.wav> --engine google --hop 1.5 --realtime --workers 3 --save <기록.jsonl>
 # 저장해 둔 인식 결과로 추적기만 다시 (몇 초)
 python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --results <인식결과.jsonl>
 # 개선 전 추적기와 비교 / 설정 바꿔 보기

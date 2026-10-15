@@ -19,6 +19,8 @@ HINT_MODELS = ("chirp_3", "short")
 class GoogleEngine(STTEngine):
     key = "google"
     mode = "chunk"
+    workers = 3    # chirp_3 는 요청당 1~2초(p95 2.2초)라 1.5초 간격이면 동시에 보내야 따라감
+                   # (SpeechClient 는 gRPC 채널이라 스레드 사이에 같이 써도 됨)
     default_model, default_location = "chirp_3", "us"
 
     def __init__(self):
