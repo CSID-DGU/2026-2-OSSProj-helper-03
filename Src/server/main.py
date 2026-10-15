@@ -22,6 +22,7 @@ from engine.config import SRC, env, env_float, env_path
 from engine.cue_loader import load_cues
 from engine.pipeline import Pipeline
 from engine.stt import STTEngine, make_engine
+from engine.vad import VADGate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("helper.server")
@@ -83,6 +84,8 @@ def find_audio_file(cue_path: Path) -> Path:
 def start_session(msg: dict, emit) -> Pipeline:
     cue_path = find_cue_file(msg.get("cue_file", ""))
     stt = get_engine(env("HELPER_STT", "whisper"))
+    if env("HELPER_VAD", "0") == "1" and stt.mode == "chunk":
+        stt = VADGate(stt)    # 조용하고 말소리도 없는 조각은 음성인식에 보내지 않음
     if env("HELPER_INPUT", "file") == "mic":
         audio = MicSource(env("HELPER_MIC_DEVICE") or None)
         audio.open()          # 장치 문제를 여기서 바로 알림

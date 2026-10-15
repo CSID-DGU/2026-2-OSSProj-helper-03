@@ -9,6 +9,7 @@ Src/
 ├── engine/          음성 처리와 대본 추적 (Python)
 │   ├── cue_loader       ① 큐 시트 로더 (+ 정규화 · 자모 분해)
 │   ├── audio_input      ② 오디오 입력 (녹음 파일 재생 · 마이크)
+│   ├── vad              ② 음성 구간 감지 (Silero VAD, 소리 없는 조각은 음성인식에 안 보냄)
 │   ├── stt/             ③ 음성인식 (faster-whisper / Google / CLOVA 스트리밍)
 │   ├── aligner          ④ 대본 위치 추적
 │   ├── deviation        ⑤ 대본 이탈 감지 (1차)
@@ -50,6 +51,7 @@ uvicorn server.main:app --port 8000
 | `HELPER_STT` | `whisper`(로컬, 기본) / `google`(chirp_3 3초 조각) / `google_stream`(long 실시간) / `clova_stream` |
 | `HELPER_CHUNK_SEC` / `HELPER_HOP_SEC` | 음성인식에 보내는 조각 길이 / 간격. 간격을 짧게 하면 조각이 겹쳐 반응이 빨라지지만 CPU · API 사용량이 늘어남 |
 | `HELPER_HINTS` | `1`이면 현재 큐 + 다음 3큐를 음성인식에 힌트로 줌 (1차 실험에서 정확도가 가장 크게 오른 방법) |
+| `HELPER_VAD` | `1`이면 조용하고 말소리도 없는 조각은 음성인식에 보내지 않음 (조각 방식 엔진만. API 비용 절약 · 무음에서 힌트를 지어내는 것 줄이기) |
 | `DEVIATE_AFTER_SEC` | 말소리가 이 시간 동안 대본과 안 맞으면 이탈 알림 |
 
 키(Google 서비스 계정 JSON, CLOVA Secret Key)와 공연 데이터는 저장소에 넣지 않습니다. `.env`, `keys/`, `*.wav`는 `.gitignore`에 들어 있습니다.
@@ -70,6 +72,8 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 ```
 
 `.env`에 `HELPER_INPUT=mic`(기본 장치가 아니면 `HELPER_MIC_DEVICE`도)를 적고 서버를 켠 뒤, 위 3번처럼 큐 파일을 골라 시작한다. 녹음 파일 없이 마이크 소리로 추적하고, **회차 종료**까지 계속된다. 마이크는 16kHz 모노로 열고, 장치가 거절하면 장치 기본 주파수로 열어 16kHz로 바꾼다. 최근 60초만 메모리에 두고 저장하지 않는다.
+
+`HELPER_VAD=1`은 Silero VAD(faster-whisper에 들어 있는 ONNX 모델, torch 없이)로 조용하고 말소리도 없는 조각만 건너뛴다. 1차 데이터에서 Silero 기본 설정(문턱 0.5)으로 거르면 음악 위 대사 · 노래를 놓쳐 chirp ±1큐 정확도가 83% → 55%(가사 88% → 38%)로 떨어져서, 문턱을 0.1로 낮추고 −40dBFS보다 큰 조각은 그대로 보낸다 (정확도 그대로, 건너뜀 1~2%: 공연 시작 전 무음).
 
 ## 화면(protocol.ts)과 맞춘 방식 · 팀에서 정할 것
 

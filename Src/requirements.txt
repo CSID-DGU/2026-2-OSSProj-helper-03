@@ -11,7 +11,7 @@ python-dotenv
 sounddevice
 
 # ③ 음성인식 (쓰는 것만 있어도 됨)
-faster-whisper        # 로컬 (기본)
+faster-whisper        # 로컬 (기본). 들어 있는 Silero VAD 모델을 HELPER_VAD 에서도 씀
 google-cloud-speech   # Google Speech-to-Text V2
 grpcio                # CLOVA Speech 스트리밍
 
