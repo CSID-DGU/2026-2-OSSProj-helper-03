@@ -1,0 +1,10 @@
+# 테스트(GitHub Actions)에 필요한 것만. 음성인식 라이브러리(faster-whisper, Google, gRPC)는
+# 테스트가 가짜 음성인식을 쓰므로 설치하지 않는다 → CI 가 1~2분 안에 끝남
+fastapi
+numpy
+soundfile
+rapidfuzz
+jamo
+python-dotenv
+pytest
+httpx2

@@ -14,4 +14,4 @@ grpcio                # CLOVA Speech 스트리밍
 
 # 테스트
 pytest
-httpx
+httpx2
