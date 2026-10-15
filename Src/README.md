@@ -16,6 +16,7 @@ Src/
 │   └── pipeline         ②~⑤ 연결 (재생 · 인식 · 상태 스레드)
 ├── server/          로컬 서버 (FastAPI, WebSocket ws://localhost:8000/ws)
 ├── ui/              보조 화면 (React, Vite, TypeScript)
+├── eval/            성능 측정 (정답 라벨로 ±1큐 정확도 · 도달 지연)
 ├── tools/           convert_cues.py (큐 CSV → 화면 형식)
 └── tests/           테스트 (pytest)
 ```
@@ -45,6 +46,7 @@ uvicorn server.main:app --port 8000
 | `HELPER_DATA_DIR` | 공연 데이터 폴더 (저장소 밖). 화면에서 고른 큐 파일 이름을 이 폴더에서 찾는다 |
 | `HELPER_AUDIO_FILE` | 파일 재생 모드로 틀 녹음. 비우면 큐 파일과 같은 폴더의 첫 `.wav` (16kHz 모노) |
 | `HELPER_STT` | `whisper`(로컬, 기본) / `google`(chirp_3 3초 조각) / `google_stream`(long 실시간) / `clova_stream` |
+| `HELPER_CHUNK_SEC` / `HELPER_HOP_SEC` | 음성인식에 보내는 조각 길이 / 간격. 간격을 짧게 하면 조각이 겹쳐 반응이 빨라지지만 CPU · API 사용량이 늘어남 |
 | `HELPER_HINTS` | `1`이면 현재 큐 + 다음 3큐를 음성인식에 힌트로 줌 (1차 실험에서 정확도가 가장 크게 오른 방법) |
 | `DEVIATE_AFTER_SEC` | 말소리가 이 시간 동안 대본과 안 맞으면 이탈 알림 |
 
@@ -70,6 +72,28 @@ uvicorn server.main:app --port 8000
 | 신뢰도 | 추적 점수(0~100)를 0~1로 바꿔 보냄 | — |
 | 위치 맞추기 | 엔진에는 있음(`Aligner.jump_to`) | 화면 → 엔진 메시지 |
 | 오류 알림 | 큐·녹음 파일을 못 찾으면 서버 로그에만 남김 | 오류 메시지 형식 |
+
+## 성능 측정 (eval)
+
+정답 라벨(Audacity 라벨 내보내기: `시작초<TAB>끝초<TAB>큐번호`)로 위치 추적 성능을 잰다. 큐 시트 · 라벨 · 녹음은 저장소 밖 경로로 준다.
+
+```powershell
+cd Src
+# 실제 음성인식으로 처음부터 (대본 힌트가 추적 위치를 따라 바뀜, 실시간으로 기다리지 않음)
+python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --audio <녹음.wav> --engine whisper --chunk 3 --save <인식결과.jsonl>
+# 저장해 둔 인식 결과로 추적기만 다시 (몇 초)
+python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --results <인식결과.jsonl>
+# 개선 전 추적기와 비교 / 설정 바꿔 보기
+python -m eval.run_eval ... --baseline
+python -m eval.run_eval ... --set accept=60 --set small_step=5
+```
+
+| 지표 | 뜻 |
+|---|---|
+| ±1큐 정확도 | 0.5초마다 화면 큐와 정답 큐를 비교, 1칸 이내면 정답 (대사 · 가사 따로도 냄) |
+| 도달 지연 | 배우가 큐를 시작한 뒤 화면이 그 큐를 처음 보여 주기까지 (중앙값 · 90%) |
+| 못감 | 끝까지 화면에 안 나온 큐 수 |
+| 뒤로 · 큰점프 | 화면이 뒤로 가거나 3큐 이상 건너뛴 횟수 |
 
 ## 테스트
 

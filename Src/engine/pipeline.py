@@ -39,13 +39,15 @@ def implausible(text: str, prev: str, dur_sec: float) -> bool:
 
 class Pipeline:
     def __init__(self, cues: list[Cue], audio: np.ndarray, stt: STTEngine, emit: Callable[[dict], None], *,
-                 hints: bool = True, chunk_sec: float = 3.0, deviate_after: float = 6.0,
+                 hints: bool = True, chunk_sec: float = 3.0, hop_sec: float | None = None,
+                 deviate_after: float = 6.0,
                  speed: float = 1.0, song_segment: bool = True):
         self.aligner = Aligner(cues)
         self.detector = DeviationDetector(deviate_after)
         self.source = FileSource(audio, speed)
         self.stt, self.emit = stt, emit
         self.hints, self.chunk_sec, self.speed = hints, chunk_sec, speed
+        self.hop_sec = hop_sec or chunk_sec    # 조각을 보내는 간격. chunk_sec 보다 짧으면 겹쳐 보냄
         self.song_segment = song_segment
         self.stopped = threading.Event()
         self.lock = threading.Lock()
@@ -115,13 +117,13 @@ class Pipeline:
 
     # ── 조각 방식 ────────────────────────────────────────────
     def _chunk_loop(self):
-        end = self.chunk_sec
+        end = self.hop_sec if self.hop_sec < self.chunk_sec else self.chunk_sec
         while not self.stopped.is_set():
             while self.source.now_audio() < end and not self.stopped.is_set():
                 time.sleep(0.02)
             if self.stopped.is_set() or end > self.source.duration + 1e-6:
                 break
-            seg = self.source.segment(end - self.chunk_sec, end)
+            seg = self.source.segment(max(0.0, end - self.chunk_sec), end)
             try:
                 text = self.stt.transcribe(seg, self._hint_texts())
             except Exception as ex:   # 인식 실패는 건너뛰고 계속 (끊김은 로그로 남김)
@@ -132,10 +134,10 @@ class Pipeline:
                 text = ""
             self.prev_text = raw
             self._handle(text, end, raw)
-            end += self.chunk_sec
+            end += self.hop_sec
             behind = self.source.now_audio() - end
-            if behind > self.chunk_sec:   # 인식이 밀리면 지난 조각은 버리고 최신 소리로 (지연이 쌓이지 않게)
-                end += (behind // self.chunk_sec) * self.chunk_sec
+            if behind > self.hop_sec:   # 인식이 밀리면 지난 조각은 버리고 최신 소리로 (지연이 쌓이지 않게)
+                end += (behind // self.hop_sec) * self.hop_sec
         log.info("인식 끝")
 
     # ── 스트리밍 ────────────────────────────────────────────

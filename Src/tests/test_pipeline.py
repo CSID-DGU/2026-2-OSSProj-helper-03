@@ -62,3 +62,24 @@ def test_implausible_filter():
     assert implausible("우산 챙겨", "우산 챙겨", 3)              # 직전과 똑같음
     assert implausible("아 아 아 아", "", 3)                 # 같은 말 반복
     assert not implausible("빛이 다시 돌아올 거예요", "", 3)
+
+
+def test_overlapping_chunks(sample_cues, silence):
+    """3초 조각을 1.5초마다 보내면 인식 횟수가 두 배 가까이 되고, 조각 길이는 3초를 유지한다."""
+    seen = []
+
+    class Recorder(FakeSTT):
+        def transcribe(self, audio, hints=None):
+            seen.append(len(audio))
+            return super().transcribe(audio, hints)
+
+    msgs = []
+    pipe = Pipeline(sample_cues, silence[:16000 * 12], Recorder([]), msgs.append, speed=30,
+                    chunk_sec=3.0, hop_sec=1.5)
+    pipe.start()
+    pipe.source.done.wait(timeout=5)
+    time.sleep(0.3)
+    pipe.stop()
+    pipe.join(timeout=5)
+    assert len(seen) >= 7                                  # 12초 / 1.5초 = 8번 (3초 미만 첫 조각 포함)
+    assert max(seen) == 16000 * 3                          # 조각 길이는 3초
