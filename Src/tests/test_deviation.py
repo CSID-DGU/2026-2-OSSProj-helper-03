@@ -200,3 +200,21 @@ def test_near_miss_on_current_line_is_not_evidence():
     far = Cue(9, 9, "dialogue", "", "x")
     d.update(Step("miss", CUE, 62, far), 0, 4500)
     assert d.state == "suspect"
+
+
+def test_deviation_metrics_match_alerts_to_truth(sample_cues):
+    """eval/deviation_eval: 정답 구간 안 알림은 찾음 · 지연 · 복귀 표시 시간, 밖은 잘못된 알림."""
+    from engine.deviation import Alert
+    from eval.deviation_eval import score
+
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    truth = [{"type": "adlib", "start_sec": 10.0, "end_sec": 18.0, "return_cue_id": lines[3].id},
+             {"type": "skip", "start_sec": 40.0, "end_sec": 40.0, "return_cue_id": lines[8].id}]
+    alerts = [(15.0, Alert("adlib", 11000, None)), (20.0, Alert("adlib", 11000, lines[3].id)),   # 애드리브 시작 · 복귀
+              (43.0, Alert("skip", 41000, lines[9].id)),                                          # 누락 (복귀 큐 1칸 차이)
+              (70.0, Alert("adlib", 66000, None))]                                                # 정답에 없음
+    res = score(alerts, truth, sample_cues)
+    a, s = res["rows"]
+    assert a["found"] and a["delay"] == 5.0 and a["ret_time"] == 2.0 and a["type_ok"] and a["ret_ok"]
+    assert s["found"] and s["delay"] == 3.0 and s["type_ok"] and s["ret_ok"]
+    assert len(res["false"]) == 1 and res["false"][0]["t0"] == 70.0
