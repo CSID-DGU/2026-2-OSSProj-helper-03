@@ -3,7 +3,8 @@
 실행 (Src 폴더에서):  uvicorn server.main:app --port 8000
 
 화면 → 엔진
-- session.start {show_id, cue_file} : cue_file 이름을 HELPER_DATA_DIR 에서 찾아 큐를 읽고, 녹음 파일 재생 시작
+- session.start {show_id, cue_file} : cue_file 이름을 HELPER_DATA_DIR 에서 찾아 큐를 읽고, 녹음 파일 재생
+                                      (HELPER_INPUT=mic 이면 마이크) 시작
 - session.end   {show_id}           : 멈춤
 - settings.update {alert_threshold} : 지금은 기록만
 엔진 → 화면: position.update / deviation.alert / input.status
@@ -16,11 +17,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-from engine.audio_input import load_wav
+from engine.audio_input import MicSource, load_wav
 from engine.config import SRC, env, env_float, env_path
 from engine.cue_loader import load_cues
 from engine.pipeline import Pipeline
 from engine.stt import STTEngine, make_engine
+from engine.vad import VADGate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("helper.server")
@@ -81,15 +83,24 @@ def find_audio_file(cue_path: Path) -> Path:
 
 def start_session(msg: dict, emit) -> Pipeline:
     cue_path = find_cue_file(msg.get("cue_file", ""))
-    audio_path = find_audio_file(cue_path)
     stt = get_engine(env("HELPER_STT", "whisper"))
-    log.info("큐 %s, 녹음 %s, 음성인식 %s", cue_path.name, audio_path.name, stt.label)
-    pipe = Pipeline(load_cues(cue_path), load_wav(audio_path), stt, emit,
+    if env("HELPER_VAD", "0") == "1" and stt.mode == "chunk":
+        stt = VADGate(stt)    # 조용하고 말소리도 없는 조각은 음성인식에 보내지 않음
+    if env("HELPER_INPUT", "file") == "mic":
+        audio = MicSource(env("HELPER_MIC_DEVICE") or None)
+        audio.open()          # 장치 문제를 여기서 바로 알림
+        src, speed = f"마이크 {audio.name} ({audio.rate}Hz)", 1.0
+    else:
+        audio_path = find_audio_file(cue_path)
+        audio, src = load_wav(audio_path), f"녹음 {audio_path.name}"
+        speed = env_float("HELPER_SPEED", 1.0)
+    log.info("큐 %s, %s, 음성인식 %s", cue_path.name, src, stt.label)
+    pipe = Pipeline(load_cues(cue_path), audio, stt, emit,
                     hints=env("HELPER_HINTS", "1") != "0",
                     chunk_sec=env_float("HELPER_CHUNK_SEC", 3.0),
                     hop_sec=env_float("HELPER_HOP_SEC", 0.0) or None,
                     deviate_after=env_float("DEVIATE_AFTER_SEC", 6.0),
-                    speed=env_float("HELPER_SPEED", 1.0))
+                    speed=speed)
     pipe.start()
     return pipe
 
