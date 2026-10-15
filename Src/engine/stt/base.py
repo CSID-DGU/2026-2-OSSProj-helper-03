@@ -16,6 +16,7 @@ class STTEngine:
     key = ""
     label = ""
     mode = "chunk"
+    workers = 1    # 조각 방식에서 동시에 보낼 인식 요청 수 기본값 (로컬 모델은 CPU 를 나눠 쓰므로 1)
 
     def check(self) -> None:
         """설정이 모자라면 MissingConfig."""

@@ -9,7 +9,9 @@ import logging
 import re
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 
 import numpy as np
 
@@ -42,7 +44,7 @@ class Pipeline:
                  emit: Callable[[dict], None], *,
                  hints: bool = True, chunk_sec: float = 3.0, hop_sec: float | None = None,
                  deviate_after: float = 6.0,
-                 speed: float = 1.0, song_segment: bool = True):
+                 speed: float = 1.0, song_segment: bool = True, stt_workers: int | None = None):
         self.aligner = Aligner(cues)
         self.detector = DeviationDetector(deviate_after)
         # 녹음(ndarray)이면 파일 재생, 아니면 받은 소리 원천(MicSource 등)을 그대로 쓴다
@@ -50,6 +52,7 @@ class Pipeline:
         self.stt, self.emit = stt, emit
         self.hints, self.chunk_sec, self.speed = hints, chunk_sec, speed
         self.hop_sec = hop_sec or chunk_sec    # 조각을 보내는 간격. chunk_sec 보다 짧으면 겹쳐 보냄
+        self.workers = max(1, stt_workers or stt.workers)   # 동시에 보내는 인식 요청 수 (없으면 엔진 기본값)
         self.song_segment = song_segment
         self.stopped = threading.Event()
         self.lock = threading.Lock()
@@ -119,28 +122,75 @@ class Pipeline:
 
     # ── 조각 방식 ────────────────────────────────────────────
     def _chunk_loop(self):
+        """hop_sec 마다 최근 chunk_sec 소리를 인식 요청으로 보낸다. 요청은 동시에 최대 workers 개.
+
+        - 대본 힌트는 요청을 보낼 때의 추적 위치로 만든다
+        - 결과는 조각 순서대로 처리한다 (걸러내기 · 직전 글자 비교도 이 순서). 뒤 조각이 먼저 끝나면
+          아직 안 끝난 앞 조각은 늦은 결과로 버린다 → 느린 요청 하나가 화면을 붙잡지 않음
+          (조각이 겹치면 버린 조각의 소리는 앞뒤 조각에 들어 있다)
+        - 요청이 다 차서 밀리면 지난 조각은 보내지 않고 최신 소리로 (지연이 쌓이지 않게)
+        workers=1 이면 예전처럼 한 번에 하나씩: 결과를 처리한 뒤 다음 조각을 보낸다.
+        """
+        self.records: list[dict] = []           # 요청마다 chunk_start · chunk_end · text · proc_sec (+ error · late)
+        self.stats = {"skipped": 0, "late": 0}  # 밀려서 안 보낸 조각 수 · 늦어서 버린 결과 수
+        pool = ThreadPoolExecutor(self.workers, thread_name_prefix="helper-stt")
+        pending: deque[tuple[dict, Future]] = deque()   # 보냈고 아직 처리 안 한 조각 (보낸 순서)
+        busy: list[Future] = []                          # 진행 중인 요청 (버린 것 포함)
         end = self.hop_sec if self.hop_sec < self.chunk_sec else self.chunk_sec
-        while not self.stopped.is_set():
-            while self.source.now_audio() < end and not self.stopped.is_set():
+        try:
+            while not self.stopped.is_set():
+                busy = [f for f in busy if not f.done()]   # 먼저 세고 처리 → 여기서 끝난 결과는 아래서 처리됨
+                self._collect(pending)                     # (workers=1 이면 힌트가 늘 직전 결과까지 반영)
+                now = self.source.now_audio()
+                if now < end or len(busy) >= self.workers:
+                    time.sleep(0.02)
+                    continue
+                behind = now - end
+                if behind > self.hop_sec:   # 인식이 밀리면 지난 조각은 버리고 최신 소리로
+                    n = int(behind // self.hop_sec)
+                    end += n * self.hop_sec
+                    self.stats["skipped"] += n
+                if end > self.source.duration + 1e-6:
+                    break
+                rec = {"chunk_start": max(0.0, end - self.chunk_sec), "chunk_end": end}
+                seg = self.source.segment(rec["chunk_start"], end)
+                fut = pool.submit(self._recognize, seg, self._hint_texts(), rec)
+                self.records.append(rec)
+                pending.append((rec, fut))
+                busy.append(fut)
+                end += self.hop_sec
+            while pending and not self.stopped.is_set():   # 녹음 끝: 남은 결과까지 처리
+                self._collect(pending)
                 time.sleep(0.02)
-            if self.stopped.is_set() or end > self.source.duration + 1e-6:
-                break
-            seg = self.source.segment(max(0.0, end - self.chunk_sec), end)
-            try:
-                text = self.stt.transcribe(seg, self._hint_texts())
-            except Exception as ex:   # 인식 실패는 건너뛰고 계속 (끊김은 로그로 남김)
-                log.warning("인식 실패 (%.1fs): %s", end, ex)
-                text = ""
-            raw = text
-            if implausible(text, self.prev_text, self.chunk_sec):
-                text = ""
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        log.info("인식 끝: 요청 %d, 밀려서 건너뜀 %d, 늦어서 버림 %d, 실패 %d", len(self.records),
+                 self.stats["skipped"], self.stats["late"], sum("error" in r for r in self.records))
+
+    def _recognize(self, seg: np.ndarray, hints: list[str] | None, rec: dict) -> str:
+        """인식 요청 하나 (작업 스레드). 실패는 건너뛰고 계속 (끊김은 로그로 남김)."""
+        t0 = time.perf_counter()
+        try:
+            text = self.stt.transcribe(seg, hints)
+        except Exception as ex:
+            log.warning("인식 실패 (%.1fs): %s", rec["chunk_end"], ex)
+            text, rec["error"] = "", str(ex)
+        rec.update(text=text, proc_sec=round(time.perf_counter() - t0, 3))
+        return text
+
+    def _collect(self, pending: deque):
+        """끝난 인식 결과를 조각 순서대로 처리. 뒤 조각이 먼저 끝났으면 앞의 안 끝난 조각은 버린다."""
+        last = max((i for i, (_, f) in enumerate(pending) if f.done()), default=-1)
+        for _ in range(last + 1):
+            rec, fut = pending.popleft()
+            if not fut.done():         # 늦은 결과: 나중에 끝나도 쓰지 않음
+                rec["late"] = True
+                self.stats["late"] += 1
+                continue
+            raw = fut.result()
+            text = "" if implausible(raw, self.prev_text, self.chunk_sec) else raw
             self.prev_text = raw
-            self._handle(text, end, raw)
-            end += self.hop_sec
-            behind = self.source.now_audio() - end
-            if behind > self.hop_sec:   # 인식이 밀리면 지난 조각은 버리고 최신 소리로 (지연이 쌓이지 않게)
-                end += (behind // self.hop_sec) * self.hop_sec
-        log.info("인식 끝")
+            self._handle(text, rec["chunk_end"], raw)
 
     # ── 스트리밍 ────────────────────────────────────────────
     def _stream_loop(self):
