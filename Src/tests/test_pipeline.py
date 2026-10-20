@@ -61,7 +61,8 @@ def test_deviation_start_and_return(sample_cues, silence):
 
 
 def test_implausible_filter():
-    assert implausible("가" * 30, "", 3)                   # 3초에 30음절
+    assert implausible("가" * 44, "", 3)                   # 3초에 44음절 (지어낸 결과)
+    assert not implausible("가" * 30, "", 3)               # 두 사람이 겹쳐 말하면 3초에 30음절도 나옴
     assert implausible("우산 챙겨", "우산 챙겨", 3)              # 직전과 똑같음
     assert implausible("아 아 아 아", "", 3)                 # 같은 말 반복
     assert not implausible("빛이 다시 돌아올 거예요", "", 3)

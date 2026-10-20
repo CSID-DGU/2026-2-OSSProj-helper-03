@@ -24,7 +24,8 @@ from .stt import STTEngine
 
 log = logging.getLogger("helper.pipeline")
 
-MAX_SYLLABLES_PER_SEC = 8    # 이보다 빠르면 사람이 말한 게 아니라 환각으로 본다
+MAX_SYLLABLES_PER_SEC = 10   # 이보다 빠르면 사람이 말한 게 아니라 환각으로 본다. 두 사람이 겹쳐 말하면
+                             # 3초에 28~32음절도 나와서 8 → 10 (지어낸 결과는 3초에 44~52음절)
 STREAM_TAIL = 12             # 스트리밍 결과에서 정렬기에 넣을 최근 글자 수 (공백 제외)
 
 
