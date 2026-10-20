@@ -51,7 +51,7 @@ def replay(cues, records, aligner_kw=None, detector_kw=None, song_hold=True):
         text = "" if implausible(raw, prev_raw, r["chunk_end"] - r["chunk_start"]) else raw
         prev_raw = raw
         now = r["chunk_end"] + r.get("proc_sec", 0.0)
-        step = al.update(text)
+        step = al.update(text, r["chunk_end"])
         hold = song_hold and al.current.type == "lyric"
         alert = det.update(step, al.pos, int(now * 1000), hold=hold)
         if alert:

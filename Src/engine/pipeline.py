@@ -44,8 +44,9 @@ class Pipeline:
                  emit: Callable[[dict], None], *,
                  hints: bool = True, chunk_sec: float = 3.0, hop_sec: float | None = None,
                  deviate_after: float = 3.0,
-                 speed: float = 1.0, song_segment: bool = True, stt_workers: int | None = None):
-        self.aligner = Aligner(cues)
+                 speed: float = 1.0, song_segment: bool = True, stt_workers: int | None = None,
+                 aligner_kw: dict | None = None):
+        self.aligner = Aligner(cues, **(aligner_kw or {}))
         self.detector = DeviationDetector(deviate_after)
         # 녹음(ndarray)이면 파일 재생, 아니면 받은 소리 원천(MicSource 등)을 그대로 쓴다
         self.source = FileSource(audio, speed) if isinstance(audio, np.ndarray) else audio
@@ -98,9 +99,9 @@ class Pipeline:
             return [c.text for c in self.aligner.hint_cues()] or None
 
     def _handle(self, text: str, audio_end: float, transcript: str | None = None):
-        """인식 글자 하나를 정렬기 · 이탈 감지에 넣고 화면 메시지를 보낸다."""
+        """인식 글자 하나를 정렬기 · 이탈 감지에 넣고 화면 메시지를 보낸다. audio_end = 그 소리의 끝 시각."""
         with self.lock:
-            step = self.aligner.update(text)
+            step = self.aligner.update(text, audio_end)
             song = self._segment() == "song"
             alert = self.detector.update(step, self.aligner.pos, int(time.time() * 1000), hold=song)
         if step.heard:

@@ -147,8 +147,54 @@ def test_lost_search_window_without_scene_info():
     lose(al)
     al.update("내일 아침에 다시 만나요")              # 11번: 4큐 창 밖
     assert al.current.id == 2
-    al = Aligner(cues, ahead=1, lost_window=0)        # 0 = 끝까지 (개선 전)
+    al = Aligner(cues, ahead=1, lost_window=0, pace=0)   # 0 = 끝까지 (개선 전). 빠르기 확인은 따로 시험
     lose(al)
     al.update("내일 아침에 다시 만나요")
     al.update("내일 아침에 다시 만나요")
     assert al.current.id == 11
+
+
+def test_stale_candidate_does_not_confirm_a_far_jump(sample_cues):
+    """한참 전에 한 번 나온 큰 이동 후보는 버린다 (예전에는 1분 뒤 엉뚱한 말 한 번으로 10큐 넘게 튐)."""
+    lines = dialogue(sample_cues)
+    al = Aligner(sample_cues, strong=101, pace=0)
+    al.update(lines[0].text, 3)
+    assert al.update(lines[8].text, 6).status == "pending"
+    for t in range(9, 33, 3):                          # 대본과 상관없는 말이 이어짐
+        al.update("전혀 상관없는 이야기를 길게 합니다", t)
+    step = al.update(lines[8].text, 33)                # 27초 뒤 다시: 새 후보로만 셈
+    assert step.status == "pending" and al.current.id == lines[0].id
+    al = Aligner(sample_cues, strong=101, pace=0, pending_sec=0)   # 개선 전: 오래된 후보로 이동
+    al.update(lines[0].text, 3)
+    al.update(lines[8].text, 6)
+    for t in range(9, 33, 3):
+        al.update("전혀 상관없는 이야기를 길게 합니다", t)
+    assert al.update(lines[8].text, 33).status == "move"
+
+
+def test_too_fast_jump_needs_one_more_confirmation(sample_cues):
+    """지나칠 대사를 사람이 말할 수 없는 빠르기로 건너뛰면 긴 문장이라도 바로 안 가고, 확인을 한 번 더 받는다.
+    오래 뒤처졌다가 따라잡는 이동(지나친 대사를 말할 시간이 있었음)은 그대로."""
+    lines = dialogue(sample_cues)
+    target = lines[10]
+    al = Aligner(sample_cues)
+    al.update(lines[0].text, 3)
+    assert al._too_fast(al.items.index(target))
+    assert al.update(target.text, 4.5).status == "pending"        # 긴 문장 100점이어도 바로 안 감
+    assert al.update(target.text, 6).status == "pending"          # 두 번으로는 부족
+    assert al.update(target.text, 7.5).status == "move"
+    al = Aligner(sample_cues)
+    al.update(lines[0].text, 3)
+    for t in range(6, 120, 3):                         # 2분 가까이 못 따라감 (지나친 대사를 말할 시간 충분)
+        al.update("", t)
+    assert not al._too_fast(al.items.index(target))
+    assert al.update(target.text, 120).status == "move"           # 긴 문장이 확실히 맞으면 바로
+
+
+def test_parse_settings():
+    from engine.aligner import parse_settings
+    assert parse_settings("") == {}
+    assert parse_settings("ahead=10, lost_window=20,pace=6.5,anchor=mid") ==         {"ahead": 10, "lost_window": 20, "pace": 6.5, "anchor": "mid"}
+    import pytest
+    with pytest.raises(ValueError):
+        parse_settings("ahaed=10")

@@ -67,7 +67,7 @@ def replay(cues, records, kw) -> list[tuple[float, int]]:
         text = "" if implausible(raw, prev_raw, r["chunk_end"] - r["chunk_start"]) else raw
         prev_raw = raw
         before = al.current.id
-        al.update(text)
+        al.update(text, r["chunk_end"])
         if al.current.id != before:
             timeline.append((r["chunk_end"] + r.get("proc_sec", 0.0), al.current.id))
     return timeline
@@ -101,7 +101,7 @@ def live(cues, audio_path, args, kw) -> tuple[list[tuple[float, int]], list[dict
         text = "" if implausible(raw, prev_raw, min(args.chunk, end)) else raw
         prev_raw = raw
         before = al.current.id
-        al.update(text)
+        al.update(text, end)
         if al.current.id != before:
             timeline.append((end + proc, al.current.id))
         end += hop
@@ -128,9 +128,8 @@ def realtime(cues, audio_path, args, kw) -> tuple[list[tuple[float, int]], list[
             timeline.append((round(pipe.source.now_audio(), 3), msg["cue_id"]))
 
     pipe = Pipeline(cues, load_wav(audio_path), stt, emit, hints=not args.no_hints, chunk_sec=args.chunk,
-                    hop_sec=args.hop or None, speed=args.speed, stt_workers=args.workers or None)
-    if kw:
-        pipe.aligner = Aligner(cues, **kw)
+                    hop_sec=args.hop or None, speed=args.speed, stt_workers=args.workers or None,
+                    aligner_kw=kw)
     print(f"  실시간: {stt.label}, 조각 {args.chunk:g}s/{pipe.hop_sec:g}s, 동시 요청 {pipe.workers}, "
           f"약 {pipe.source.duration / args.speed:.0f}초 걸림")
     pipe.start()

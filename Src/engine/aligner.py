@@ -16,10 +16,20 @@
 - 앞으로 2큐 넘게 이동할 때, 건너뛴 대사 중 최근 인식 글자에 없는 것을 Step.skipped 로 알려 줌 (누락 근거)
 - 들었던 큐를 기억해 두고, 그 큐로 되돌아가면 Step.again (반복 근거)
 - 멀리 있는 큐와 가까운 큐가 똑같이 맞으면 가까운 쪽 (같은 대사가 대본에 두 번 있을 때 잘못 점프 방지, prefer_near)
+4차 (큰 이동 확인 강화, 인식 글자의 소리 끝 시각을 같이 받음):
+- 큰 이동 후보는 pending_sec 초 안에 다시 나와야 인정 — 전에는 1분 넘게 지난 후보가 남아 있다가
+  엉뚱한 말 한 번으로 10큐 넘게 튀었다 (엉뚱한 대본 시험에서 5큐 넘는 이동 6번 → 0번)
+- 지나칠 대사를 사람이 말할 수 있는 빠르기(pace 음절/초)보다 빨리 지나가면 긴 문장 즉시 이동을 막고
+  확인을 한 번 더 받는다. 뒤처졌다 따라잡는 이동은 그대로, 몇 초 만에 대본을 크게 건너뛰는 이동만 신중하게
+  (반복 후렴이 10큐 뒤 같은 가사와 100점으로 맞아 튀던 것을 막음)
+- 소리가 겹치는 조각(3초 조각을 1.5초마다)은 확인 한 번으로 치는 방법도 해 봤지만 반복 감지를 놓쳐서 뺐다
 """
+import inspect
+import re
 from bisect import bisect_right
 from collections import deque
 from dataclasses import dataclass
+from itertools import accumulate
 
 from rapidfuzz import fuzz
 
@@ -28,7 +38,7 @@ from .cue_loader import TRACK_TYPES, Cue, to_jamo
 # 개선 전(엔진 서버 첫 버전) 설정. 평가(eval/run_eval.py --baseline)에서 비교용으로 쓴다.
 BASELINE = dict(min_jamo=6, accept=65.0, back=3, ahead=15, small_step=2, confirm=2, lost_after=3,
                 strong=85.0, strong_jamo=10, anchor="mid", widen=0, near_first=0, scene_limit=0, lost_window=0,
-                prefer_near=0)
+                prefer_near=0, pending_sec=0.0, pace=0.0)
 
 
 @dataclass
@@ -55,7 +65,8 @@ class Aligner:
     def __init__(self, cues: list[Cue], track_types=TRACK_TYPES, start_id: int | None = None,
                  min_jamo=6, accept=65.0, back=3, ahead=15, small_step=4, confirm=2, lost_after=3,
                  strong=85.0, strong_jamo=10, anchor="end", widen=0, near_first=1,
-                 scene_limit=1, lost_window=30, recent=3, heard_score=60.0, prefer_near=1):
+                 scene_limit=1, lost_window=30, recent=3, heard_score=60.0, prefer_near=1,
+                 pending_sec=9.0, pace=8.0):
         self.items = [c for c in cues if c.type in track_types and c.jamo]
         if not self.items:
             raise ValueError("추적할 큐(대사·가사)가 없습니다.")
@@ -64,6 +75,8 @@ class Aligner:
             self.starts.append(s)
             s += len(c.jamo)
         self.text = "".join(c.jamo for c in self.items)
+        # 큐까지 누적 음절 수 (지나친 대사를 말하는 데 드는 최소 시간 계산용)
+        self.syl = [0, *accumulate(len(re.findall(r"[가-힣]", c.text)) for c in self.items)]
         self.min_jamo, self.accept = min_jamo, accept
         self.back, self.ahead, self.small_step = back, ahead, small_step
         self.confirm, self.lost_after = confirm, lost_after
@@ -76,12 +89,16 @@ class Aligner:
         self.heard_score = heard_score
         self.heard: set[int] = set()  # 들었던 큐 (위치로 확인했거나, 지나칠 때 최근 인식 글자에 있던 것)
         self.prefer_near = int(prefer_near)
+        self.pending_sec = pending_sec  # 큰 이동 후보는 이 시간(초) 안에 다시 나와야 인정 (0 = 끝없이 기다림)
+        self.pace = pace                # 사람이 말할 수 있는 가장 빠른 속도 (음절/초). 0 = 안 봄
+        self.clock = 0.0              # 마지막 인식 글자의 소리 끝 시각
+        self.at: float | None = None  # 마지막으로 위치를 확인한 소리 시각
         self.stale = 0                # 마지막으로 위치를 확인한 뒤 지난 인식 횟수 (빈 결과 포함)
         self.pos = 0
+        self.pending: list[tuple[int, float]] = []   # 큰 이동 후보 (위치, 소리 끝 시각), 나온 순서
         if start_id is not None:
             self.jump_to(start_id)
         self.miss = 0
-        self.pending: list[int] = []
 
     @property
     def current(self) -> Cue:
@@ -96,7 +113,7 @@ class Aligner:
         idx = next((i for i, c in enumerate(self.items) if c.id == cue_id), None)
         if idx is None:
             return False
-        self.pos, self.miss, self.pending, self.stale = idx, 0, [], 0
+        self.pos, self.miss, self.pending, self.stale, self.at = idx, 0, [], 0, self.clock
         return True
 
     def _lost_ranges(self, scene_limit: int, window: int) -> list[int]:
@@ -127,14 +144,26 @@ class Aligner:
             at = a + (al.dest_start + al.dest_end) // 2
         return bisect_right(self.starts, at) - 1, al.score
 
-    def update(self, text: str) -> Step:
+    def _too_fast(self, idx: int) -> bool:
+        """현재 위치 → idx 사이 대사를, 마지막 확인 뒤 지난 시간 동안 사람이 다 말할 수 없었나."""
+        if not self.pace or self.at is None or idx <= self.pos + 1:
+            return False
+        need = (self.syl[idx] - self.syl[self.pos + 1]) / self.pace
+        return self.clock - self.at < need
+
+    def update(self, text: str, end: float | None = None) -> Step:
+        """인식 글자 하나를 반영. end = 그 글자 소리의 끝 시각 (초). 안 주면 한 번에 1초씩 흐른 것으로 본다."""
+        end = self.clock + 1.0 if end is None else end
+        self.clock = end
+        if self.pending_sec:   # 오래된 큰 이동 후보는 버린다 (한참 뒤 엉뚱한 말 한 번으로 튀지 않게)
+            self.pending = [p for p in self.pending if end - p[1] <= self.pending_sec]
         t = to_jamo(text)
         if len(t) < self.min_jamo:
             self.stale += 1
             return Step("skip", self.current)
         self.stale += 1
         self.recent.append(t)
-        far = max([self.pos] + self.pending)
+        far = max([self.pos] + [p for p, _ in self.pending])
         lo = max(0, self.pos - self.back)
         near_hi = min(len(self.items), far + self.ahead + self.widen * (self.stale - 1) + 1)
         if self.lost:   # 공연은 대체로 앞으로 가므로 현재 위치 조금 앞부터 끝까지
@@ -156,19 +185,21 @@ class Aligner:
 
         self.miss = 0
         d = idx - self.pos
-        if 0 <= d <= self.small_step or (d > 0 and score >= self.strong and len(t) >= self.strong_jamo):
+        fast = self._too_fast(idx)
+        if 0 <= d <= self.small_step or (d > 0 and not fast and score >= self.strong and len(t) >= self.strong_jamo):
             # 자연스러운 진행 / 긴 문장이 확실히 맞음
             return self._move(idx, score, cand)
-        # 큰 이동(뒤로 가거나 많이 건너뜀): 대기 후보와 같은 곳이거나 그 바로 뒤로 이어지면 인정
-        self.pending = [p for p in self.pending if -1 <= idx - p <= self.small_step + 1] + [idx]
-        if len(self.pending) >= self.confirm:
+        # 큰 이동(뒤로 가거나 많이 건너뜀): 대기 후보와 같은 곳이거나 그 바로 뒤로 이어지면 인정.
+        # 말할 수 없는 빠르기로 건너뛰면 한 번 더
+        self.pending = [p for p in self.pending if -1 <= idx - p[0] <= self.small_step + 1] + [(idx, end)]
+        if len(self.pending) >= self.confirm + fast:
             return self._move(idx, score, cand)
         return Step("pending", self.current, score, cand)
 
     def _move(self, idx: int, score: float, cand: Cue) -> Step:
         prev = self.pos
         again = idx < prev and idx in self.heard
-        self.pos, self.pending, self.stale = idx, [], 0
+        self.pos, self.pending, self.stale, self.at = idx, [], 0, self.clock
         skipped = []
         got = "".join(self.recent)
         for i in range(prev + 1, idx):        # 지나친 큐: 최근 인식 글자에 비슷한 부분이 있으면 들은 것으로
@@ -182,3 +213,17 @@ class Aligner:
                 skipped.append(c)
         self.heard.add(idx)
         return Step("move" if idx != prev else "stay", self.current, score, cand, tuple(skipped), again)
+
+
+def parse_settings(text: str) -> dict:
+    """'ahead=12, lost_window=20' → Aligner 설정 (.env 의 HELPER_ALIGN). 모르는 이름은 오류 (오타 방지)."""
+    defaults = {k: p.default for k, p in inspect.signature(Aligner.__init__).parameters.items()
+                if p.default is not inspect.Parameter.empty and k not in ("track_types", "start_id")}
+    out = {}
+    for kv in filter(None, (s.strip() for s in text.split(","))):
+        k, sep, v = (s.strip() for s in kv.partition("="))
+        if not sep or k not in defaults:
+            raise ValueError(f"추적기 설정 '{kv}' 를 알 수 없음 (예: HELPER_ALIGN=ahead=12,lost_window=20)")
+        d = defaults[k]
+        out[k] = v if isinstance(d, str) else int(float(v)) if isinstance(d, int) else float(v)
+    return out

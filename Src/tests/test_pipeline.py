@@ -167,3 +167,18 @@ def test_workers_default_and_env(sample_cues, silence, monkeypatch):
     assert make_engine("whisper").workers == 2
     assert Pipeline(sample_cues, silence, FakeSTT([]), print).workers == 1
     assert Pipeline(sample_cues, silence, FakeSTT([]), print, stt_workers=4).workers == 4
+
+
+def test_aligner_settings_and_sound_clock(sample_cues, silence):
+    """HELPER_ALIGN 설정이 추적기에 들어가고, 추적기 시계가 조각의 소리 끝 시각을 따라간다."""
+    from engine.aligner import parse_settings
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    pipe = Pipeline(sample_cues, silence, FakeSTT([c.text for c in lines[:3]]), lambda m: None, speed=30,
+                    aligner_kw=parse_settings("ahead=7, pace=0"))
+    assert pipe.aligner.ahead == 7 and pipe.aligner.pace == 0
+    pipe.start()
+    pipe.source.done.wait(timeout=10)
+    time.sleep(0.3)
+    pipe.stop()
+    pipe.join(timeout=5)
+    assert pipe.aligner.clock == max(r["chunk_end"] for r in pipe.records)

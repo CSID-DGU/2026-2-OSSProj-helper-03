@@ -53,6 +53,7 @@ uvicorn server.main:app --port 8000
 | `HELPER_STT_WORKERS` | 조각 인식 요청을 동시에 몇 개까지 보낼지. 비우면 엔진 기본값 (whisper 1 · google 3). 인식 한 번이 간격보다 오래 걸려도 (chirp_3 요청당 1~2초, p95 2.2초) 밀리지 않게 겹쳐 보냄 |
 | `HELPER_HINTS` | `1`이면 현재 큐 + 다음 3큐를 음성인식에 힌트로 줌 (1차 실험에서 정확도가 가장 크게 오른 방법) |
 | `HELPER_VAD` | `1`이면 조용하고 말소리도 없는 조각은 음성인식에 보내지 않음 (조각 방식 엔진만. API 비용 절약 · 무음에서 힌트를 지어내는 것 줄이기) |
+| `HELPER_ALIGN` | 위치 추적기 설정 덮어쓰기 (보통은 비워 둠). 쉼표로 여러 개, 예: `ahead=10,lost_window=20`. 이름은 `engine/aligner.py`의 `Aligner` 참고, 틀린 이름이면 회차가 시작되지 않고 서버 로그에 "회차 시작 실패" |
 | `DEVIATE_AFTER_SEC` | 말소리가 이 시간 동안 대본과 안 맞으면 이탈 알림 |
 
 키(Google 서비스 계정 JSON, CLOVA Secret Key)와 공연 데이터는 저장소에 넣지 않습니다. `.env`, `keys/`, `*.wav`는 `.gitignore`에 들어 있습니다.
