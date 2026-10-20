@@ -4,6 +4,10 @@
 - google_stream : 실시간 스트리밍. long(global) 은 중간 결과가 약 1초마다 와서 빠름
                   (chirp_3 스트리밍은 중간 결과가 없어 실시간에 부적합)
 인증: 서비스 계정 키 JSON 경로를 GOOGLE_APPLICATION_CREDENTIALS 에 (역할: Cloud Speech 클라이언트)
+
+대본 힌트 주의 (10/20 실험): 소리가 애매하면 chirp_3 가 힌트 문장을 그대로 결과로 내놓는다 (힌트 베끼기.
+힌트 네 줄을 통째로 이어 붙인 결과도 나옴). boost 를 10 → 3 으로 낮춰도 결과가 똑같았고, 짧은 큐(5음절 미만)를
+힌트에서 빼면 남은 힌트를 대신 베껴 이탈 감지가 9건 중 7 → 4 로 줄어서 둘 다 쓰지 않는다
 """
 import json
 import os
@@ -21,6 +25,8 @@ class GoogleEngine(STTEngine):
     mode = "chunk"
     workers = 3    # chirp_3 는 요청당 1~2초(p95 2.2초)라 1.5초 간격이면 동시에 보내야 따라감
                    # (SpeechClient 는 gRPC 채널이라 스레드 사이에 같이 써도 됨)
+    timeout = 5.0  # 요청 제한 시간(초). 몇 초 넘게 걸린 결과는 뒤 조각에 밀려 어차피 버리므로
+                   # 오래 기다리지 않고 동시 요청 자리를 비운다 (실패 504 가 13.7초 걸린 적 있음)
     default_model, default_location = "chirp_3", "us"
 
     def __init__(self):
@@ -67,7 +73,7 @@ class GoogleEngine(STTEngine):
     def transcribe(self, audio, hints=None):
         req = self.cs.RecognizeRequest(recognizer=self.recognizer, config=self._config(hints),
                                        content=to_pcm16(audio))
-        res = self.client.recognize(request=req, timeout=15)
+        res = self.client.recognize(request=req, timeout=self.timeout)
         return " ".join(r.alternatives[0].transcript.strip() for r in res.results if r.alternatives).strip()
 
 
