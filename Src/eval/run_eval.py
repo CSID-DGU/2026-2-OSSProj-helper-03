@@ -3,6 +3,7 @@
 1) 저장된 인식 결과 다시 돌리기 (소리 · API 없이, 몇 초):
    python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --results <결과.jsonl> [...]
    결과 JSONL 한 줄: {"chunk_start", "chunk_end", "text", "proc_sec"} (개발 폴더 run_stt.py 형식)
+   서버의 회차 기록(logs/*.jsonl)도 그대로 넣을 수 있다 (인식 요청 줄만 읽음)
 
 2) 실제 음성인식으로 처음부터 (대본 힌트가 추적 위치를 따라 바뀌므로 이쪽이 실제와 같음):
    python -m eval.run_eval --cues <큐.csv> --labels <라벨.txt> --audio <녹음.wav> --engine whisper
@@ -26,7 +27,7 @@ sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 from engine.aligner import BASELINE, Aligner  # noqa: E402
 from engine.cue_loader import load_cues  # noqa: E402
 from engine.pipeline import implausible  # noqa: E402
-from eval.metrics import evaluate, read_labels  # noqa: E402
+from eval.metrics import evaluate, read_labels, read_records  # noqa: E402
 
 
 def parse_args(argv=None):
@@ -186,7 +187,7 @@ def main(argv=None):
     kw = aligner_kwargs(args)
     end_sec = labels[-1][0] + 15
     for path in args.results:
-        records = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+        records = read_records(path)
         end_sec = max(end_sec, max(r["chunk_end"] for r in records))
         show(Path(path).stem, evaluate(replay(cues, records, kw), labels, cues, end_sec))
     if args.audio:

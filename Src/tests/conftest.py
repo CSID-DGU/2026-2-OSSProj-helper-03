@@ -13,8 +13,9 @@ SAMPLE_CSV = SRC / "ui" / "mock" / "sample_cues.csv"
 
 @pytest.fixture(autouse=True)
 def no_preload(monkeypatch):
-    """테스트에서는 서버가 진짜 음성인식 모델을 미리 불러오지 않게 한다."""
+    """테스트에서는 서버가 진짜 음성인식 모델을 미리 불러오지 않고, 회차 기록도 남기지 않는다."""
     monkeypatch.setenv("HELPER_PRELOAD", "0")
+    monkeypatch.setenv("HELPER_LOG_DIR", "off")
 
 
 @pytest.fixture

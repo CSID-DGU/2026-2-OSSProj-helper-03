@@ -9,10 +9,17 @@
 - 도달 지연: 배우가 큐를 시작한 시각 → 화면이 그 큐(또는 그 뒤)를 처음 보여 준 시각
 - 뒤로 감 · 큰 점프(3큐 이상): 화면이 흔들리는 정도
 """
+import json
 from bisect import bisect_right
 from dataclasses import dataclass, field
 
 from engine.cue_loader import TRACK_TYPES, Cue
+
+
+def read_records(path) -> list[dict]:
+    """저장된 인식 결과 JSONL. 회차 기록(engine/session_log.py)이면 인식 요청(kind=stt) 줄만."""
+    rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+    return [r for r in rows if r.get("kind", "stt") == "stt" and "chunk_end" in r]
 
 
 def read_labels(path) -> list[tuple[float, int]]:

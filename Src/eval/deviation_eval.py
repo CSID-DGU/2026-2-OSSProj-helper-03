@@ -30,7 +30,7 @@ from engine.aligner import Aligner  # noqa: E402
 from engine.cue_loader import load_cues  # noqa: E402
 from engine.deviation import BASELINE, DeviationDetector  # noqa: E402
 from engine.pipeline import implausible  # noqa: E402
-from eval.metrics import read_labels  # noqa: E402
+from eval.metrics import read_labels, read_records  # noqa: E402
 
 
 def parse_kv(items: list[str]) -> dict:
@@ -152,7 +152,7 @@ def main(argv=None):
     akw = parse_kv(args.aset)
     results = []
     for run in args.run:
-        records = [json.loads(line) for line in open(run[0], encoding="utf-8") if line.strip()]
+        records = read_records(run[0])
         truth = json.load(open(run[1], encoding="utf-8")) if len(run) > 1 else {}
         labels = read_labels(Path(run[1]).parent / truth["labels"]) if truth.get("labels") else None
         duration = truth.get("duration_sec") or max(r["chunk_end"] for r in records)

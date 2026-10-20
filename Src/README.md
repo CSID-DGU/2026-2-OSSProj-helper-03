@@ -55,6 +55,7 @@ uvicorn server.main:app --port 8000
 | `HELPER_VAD` | `1`이면 조용하고 말소리도 없는 조각은 음성인식에 보내지 않음 (조각 방식 엔진만. API 비용 절약 · 무음에서 힌트를 지어내는 것 줄이기) |
 | `HELPER_ALIGN` | 위치 추적기 설정 덮어쓰기 (보통은 비워 둠). 쉼표로 여러 개, 예: `ahead=10,lost_window=20`. 이름은 `engine/aligner.py`의 `Aligner` 참고, 틀린 이름이면 회차가 시작되지 않고 서버 로그에 "회차 시작 실패" |
 | `DEVIATE_AFTER_SEC` | 말소리가 이 시간 동안 대본과 안 맞으면 이탈 알림 |
+| `HELPER_LOG_DIR` | 회차 기록 폴더. 비우면 `Src/logs`, `off`면 안 남김. 회차마다 `날짜_시각_공연ID.jsonl` 한 파일에 인식 글자 · 추적 위치 · 이탈 알림이 쌓인다 (형식은 `engine/session_log.py`). `eval/run_eval.py --results`에 그대로 넣어 다시 돌려 볼 수 있다 |
 
 키(Google 서비스 계정 JSON, CLOVA Secret Key)와 공연 데이터는 저장소에 넣지 않습니다. `.env`, `keys/`, `*.wav`는 `.gitignore`에 들어 있습니다.
 
@@ -155,3 +156,4 @@ PR을 올리거나 main에 합쳐지면 `.github/workflows/test.yml`이 자동�
 
 - 공연 대본, 자막 큐 파일, 공연 음원: 제작사 자산이라 저장소에 올리지 않습니다. 테스트에는 직접 만든 예시 큐 파일을 씁니다.
 - 음성인식 모델 파일, API 키, 가상환경 폴더
+- 회차 기록(`Src/logs/`): 대본과 인식 글자가 들어 있음

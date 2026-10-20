@@ -8,6 +8,7 @@
 - session.end   {show_id}           : 멈춤
 - settings.update {alert_threshold} : 지금은 기록만
 엔진 → 화면: position.update / deviation.alert / input.status
+회차마다 인식 글자 · 추적 위치 · 알림을 HELPER_LOG_DIR(기본 Src/logs)에 JSONL 로 남긴다 (engine/session_log.py)
 """
 import asyncio
 import json
@@ -22,6 +23,7 @@ from engine.audio_input import MicSource, load_wav
 from engine.config import SRC, env, env_float, env_path
 from engine.cue_loader import load_cues
 from engine.pipeline import Pipeline
+from engine.session_log import SessionLog
 from engine.stt import STTEngine, make_engine
 from engine.vad import VADGate
 
@@ -103,8 +105,22 @@ def start_session(msg: dict, emit) -> Pipeline:
                     hop_sec=env_float("HELPER_HOP_SEC", 0.0) or None,
                     deviate_after=env_float("DEVIATE_AFTER_SEC", 3.0),
                     speed=speed, aligner_kw=align)
+    record = open_session_log(str(msg.get("show_id") or ""))
+    if record:
+        pipe.record = record
+        record("start", show_id=msg.get("show_id"), cue_file=cue_path.name, source=src, stt=stt.label,
+               hints=pipe.hints, chunk_sec=pipe.chunk_sec, hop_sec=pipe.hop_sec, workers=pipe.workers,
+               align=align, cues=len(pipe.aligner.items))
+        log.info("회차 기록: %s", record.path)
     pipe.start()
     return pipe
+
+
+def open_session_log(show_id: str) -> SessionLog | None:
+    """HELPER_LOG_DIR(비우면 Src/logs)에 회차 기록을 연다. off 면 남기지 않음."""
+    if env("HELPER_LOG_DIR").lower() == "off":
+        return None
+    return SessionLog.open_in(env_path("HELPER_LOG_DIR") or SRC / "logs", show_id)
 
 
 @app.get("/health")
@@ -151,6 +167,8 @@ async def ws_endpoint(ws: WebSocket):
                 log.info("회차 종료: %s", msg.get("show_id"))
             elif kind == "settings.update":
                 log.info("설정 변경: %s", msg)
+                if pipe:
+                    pipe.record("settings", **{k: v for k, v in msg.items() if k != "type"})
             else:
                 log.warning("모르는 메시지: %s", msg)
     except WebSocketDisconnect:

@@ -46,8 +46,10 @@ class Pipeline:
                  hints: bool = True, chunk_sec: float = 3.0, hop_sec: float | None = None,
                  deviate_after: float = 3.0,
                  speed: float = 1.0, song_segment: bool = True, stt_workers: int | None = None,
-                 aligner_kw: dict | None = None):
+                 aligner_kw: dict | None = None, record: Callable[..., None] | None = None):
         self.aligner = Aligner(cues, **(aligner_kw or {}))
+        # 회차 기록 (engine/session_log.SessionLog). record(kind, **내용). 인식 스레드가 끝날 때 닫는다
+        self.record = record or (lambda kind, **fields: None)
         self.detector = DeviationDetector(deviate_after)
         # 녹음(ndarray)이면 파일 재생, 아니면 받은 소리 원천(MicSource 등)을 그대로 쓴다
         self.source = FileSource(audio, speed) if isinstance(audio, np.ndarray) else audio
@@ -93,11 +95,14 @@ class Pipeline:
             return "song"
         return "dialogue"
 
-    def _hint_texts(self) -> list[str] | None:
+    def _hint_cues(self) -> list[Cue]:
         if not self.hints:
-            return None
+            return []
         with self.lock:
-            return [c.text for c in self.aligner.hint_cues()] or None
+            return self.aligner.hint_cues()
+
+    def _hint_texts(self) -> list[str] | None:
+        return [c.text for c in self._hint_cues()] or None
 
     def _handle(self, text: str, audio_end: float, transcript: str | None = None):
         """인식 글자 하나를 정렬기 · 이탈 감지에 넣고 화면 메시지를 보낸다. audio_end = 그 소리의 끝 시각."""
@@ -108,9 +113,21 @@ class Pipeline:
         if step.heard:
             latency_ms = (self.source.now_audio() - audio_end) * 1000 / self.speed
             self.emit(position_update(step.cue.id, step.score / 100, latency_ms, transcript or text))
+            self.record("step", t=round(audio_end, 3), status=step.status, cue=step.cue.id,
+                        cand=step.cand.id if step.cand else None, score=round(step.score, 1),
+                        text=transcript or text)
         if alert:
             log.info("이탈 알림: %s since=%d 복귀=%s", alert.deviation_type, alert.since, alert.return_cue_id)
             self.emit(deviation_alert(alert.deviation_type, alert.since, alert.return_cue_id))
+            self.record("alert", t=round(audio_end, 3), deviation_type=alert.deviation_type, since=alert.since,
+                        return_cue_id=alert.return_cue_id)
+
+    def _finish(self, **stats):
+        """인식 스레드 끝: 회차 기록에 마지막 줄을 쓰고 닫는다."""
+        self.record("end", **stats)
+        close = getattr(self.record, "close", None)
+        if close:
+            close()
 
     def _heartbeat_loop(self):
         # 회차 종료(session.end)까지 계속 보낸다. 녹음이 끝난 뒤에는 '음향 입력 없음'(level 0)
@@ -156,9 +173,11 @@ class Pipeline:
                     self.stats["skipped"] += n
                 if end > self.source.duration + 1e-6:
                     break
-                rec = {"chunk_start": max(0.0, end - self.chunk_sec), "chunk_end": end}
+                hints = self._hint_cues()
+                rec = {"chunk_start": max(0.0, end - self.chunk_sec), "chunk_end": end,
+                       "hints": [c.id for c in hints]}
                 seg = self.source.segment(rec["chunk_start"], end)
-                fut = pool.submit(self._recognize, seg, self._hint_texts(), rec)
+                fut = pool.submit(self._recognize, seg, [c.text for c in hints] or None, rec)
                 self.records.append(rec)
                 pending.append((rec, fut))
                 busy.append(fut)
@@ -168,8 +187,10 @@ class Pipeline:
                 time.sleep(0.02)
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
-        log.info("인식 끝: 요청 %d, 밀려서 건너뜀 %d, 늦어서 버림 %d, 실패 %d", len(self.records),
-                 self.stats["skipped"], self.stats["late"], sum("error" in r for r in self.records))
+            failed = sum("error" in r for r in self.records)
+            log.info("인식 끝: 요청 %d, 밀려서 건너뜀 %d, 늦어서 버림 %d, 실패 %d", len(self.records),
+                     self.stats["skipped"], self.stats["late"], failed)
+            self._finish(sent=len(self.records), **self.stats, failed=failed)
 
     def _recognize(self, seg: np.ndarray, hints: list[str] | None, rec: dict) -> str:
         """인식 요청 하나 (작업 스레드). 실패는 건너뛰고 계속 (끊김은 로그로 남김)."""
@@ -189,9 +210,11 @@ class Pipeline:
             rec, fut = pending.popleft()
             if not fut.done():         # 늦은 결과: 나중에 끝나도 쓰지 않음
                 rec["late"] = True
-                self.stats["late"] += 1
+                self.stats["late"] += 1   # (작업 스레드가 아직 rec 을 고칠 수 있어 정해진 칸만 기록)
+                self.record("stt", **{k: rec[k] for k in ("chunk_start", "chunk_end", "hints", "late")})
                 continue
             raw = fut.result()
+            self.record("stt", **rec)
             text = "" if implausible(raw, self.prev_text, self.chunk_sec) else raw
             self.prev_text = raw
             self._handle(text, rec["chunk_end"], raw)
@@ -214,6 +237,8 @@ class Pipeline:
                     prev = ""
         except Exception as ex:
             log.warning("스트리밍 끊김: %s", ex)
+            self.record("error", error=str(ex))
         finally:
             self.source.done.set()
+            self._finish()
         log.info("스트리밍 끝")
