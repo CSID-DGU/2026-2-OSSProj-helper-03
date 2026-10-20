@@ -11,6 +11,7 @@ keys/
 
 # 공연 대본 · 음원 · 모델 (제작사 자산, 용량)
 data/
+logs/
 *.wav
 *.mp3
 models/
