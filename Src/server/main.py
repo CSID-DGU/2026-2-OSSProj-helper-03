@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
+from engine.aligner import parse_settings
 from engine.audio_input import MicSource, load_wav
 from engine.config import SRC, env, env_float, env_path
 from engine.cue_loader import load_cues
@@ -94,13 +95,14 @@ def start_session(msg: dict, emit) -> Pipeline:
         audio_path = find_audio_file(cue_path)
         audio, src = load_wav(audio_path), f"녹음 {audio_path.name}"
         speed = env_float("HELPER_SPEED", 1.0)
-    log.info("큐 %s, %s, 음성인식 %s", cue_path.name, src, stt.label)
+    align = parse_settings(env("HELPER_ALIGN"))
+    log.info("큐 %s, %s, 음성인식 %s%s", cue_path.name, src, stt.label, f", 추적기 {align}" if align else "")
     pipe = Pipeline(load_cues(cue_path), audio, stt, emit,
                     hints=env("HELPER_HINTS", "1") != "0",
                     chunk_sec=env_float("HELPER_CHUNK_SEC", 3.0),
                     hop_sec=env_float("HELPER_HOP_SEC", 0.0) or None,
                     deviate_after=env_float("DEVIATE_AFTER_SEC", 3.0),
-                    speed=speed)
+                    speed=speed, aligner_kw=align)
     pipe.start()
     return pipe
 
