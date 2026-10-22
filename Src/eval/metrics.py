@@ -22,6 +22,22 @@ def read_records(path) -> list[dict]:
     return [r for r in rows if r.get("kind", "stt") == "stt" and "chunk_end" in r]
 
 
+def processing_order(records: list[dict]) -> list[dict]:
+    """저장된 인식 결과를 파이프라인이 처리한 순서로: 조각 순서대로, 늦게 와서 쓴 결과(late_used)는 도착한 때에
+    끼워 넣고, 늦어서 버린 결과는 뺀다 (하나씩 보낸 기록 · 늦은 결과를 버리던 예전 기록도 그대로 맞음)."""
+    done = lambda r: r["chunk_end"] + r.get("proc_sec", 0.0)   # noqa: E731
+    normal = sorted((r for r in records if not r.get("late")), key=lambda r: r["chunk_end"])
+    late = sorted((r for r in records if r.get("late_used")), key=done)
+    out, t, i = [], 0.0, 0
+    for r in normal:
+        t = max(t, done(r))                  # 이 결과를 처리한 때 (앞 조각보다 먼저일 수 없음)
+        while i < len(late) and done(late[i]) <= t:
+            out.append(late[i])
+            i += 1
+        out.append(r)
+    return out + late[i:]
+
+
 def read_labels(path) -> list[tuple[float, int]]:
     out = []
     with open(path, encoding="utf-8-sig") as f:

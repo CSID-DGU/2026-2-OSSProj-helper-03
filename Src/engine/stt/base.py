@@ -27,5 +27,9 @@ class STTEngine:
     def transcribe(self, audio: np.ndarray, hints: list[str] | None = None) -> str:
         raise NotImplementedError
 
+    def request_info(self) -> dict:
+        """이 스레드의 마지막 transcribe 에 대해 요청 기록에 더 남길 것 (예: 여러 번 보낸 요청의 각 처리 시간)."""
+        return {}
+
     def stream(self, frames: Iterator[bytes], hints_fn: Callable[[], list[str]] | None = None) -> Iterator[dict]:
         raise NotImplementedError
