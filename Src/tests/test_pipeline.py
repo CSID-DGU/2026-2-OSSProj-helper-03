@@ -183,3 +183,35 @@ def test_aligner_settings_and_sound_clock(sample_cues, silence):
     pipe.stop()
     pipe.join(timeout=5)
     assert pipe.aligner.clock == max(r["chunk_end"] for r in pipe.records)
+
+
+def test_typed_input_follows_script_and_flags_adlib(sample_cues):
+    """대사 입력 테스트: 친 글자를 인식 결과로 보고 실제 추적기 · 이탈 감지로 따라간다 (소리 · 음성인식 없이)."""
+    from engine.audio_input import TextSource
+    from engine.pipeline import TypedInput
+
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    msgs = []
+    pipe = Pipeline(sample_cues, TextSource(), TypedInput(), msgs.append, deviate_after=0.2)
+    pipe.start()
+    for c in lines[:3]:
+        pipe.say(c.text)
+    assert [m["cue_id"] for m in of(msgs, "position.update")] == [c.id for c in lines[:3]]
+    pipe.say("아 오늘 비 진짜 많이 오네 여러분 우산 챙기셨어요")       # 대본에 없는 말 두 번
+    time.sleep(0.3)
+    pipe.say("버스 정류장까지 뛰어오느라 숨이 다 차네요 정말로")
+    alerts = of(msgs, "deviation.alert")
+    assert alerts and alerts[0]["deviation_type"] == "adlib" and alerts[0]["return_cue_id"] is None
+    pipe.say(lines[3].text)                                          # 대본으로 돌아옴 → 복귀 알림
+    assert of(msgs, "deviation.alert")[-1]["return_cue_id"] == lines[3].id
+    time.sleep(1.2)
+    assert of(msgs, "input.status")[-1]["audio_level"] > 0           # 0 이면 화면이 '입력 없음'
+    pipe.stop()
+    pipe.join(timeout=3)
+
+
+def test_say_only_in_typed_input_session(sample_cues, silence):
+    import pytest
+    pipe = Pipeline(sample_cues, silence, FakeSTT([]), print)
+    with pytest.raises(ValueError):
+        pipe.say("안녕하세요")

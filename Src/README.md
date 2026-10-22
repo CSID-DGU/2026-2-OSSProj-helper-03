@@ -46,7 +46,7 @@ uvicorn server.main:app --port 8000
 |---|---|
 | `HELPER_DATA_DIR` | 공연 데이터 폴더 (저장소 밖). 화면에서 고른 큐 파일 이름을 이 폴더에서 찾는다 |
 | `HELPER_AUDIO_FILE` | 파일 재생 모드로 틀 녹음. 비우면 큐 파일과 같은 폴더의 첫 `.wav` (16kHz 모노) |
-| `HELPER_INPUT` | `file`(녹음 파일 재생, 기본) / `mic`(마이크. 녹음 파일이 필요 없음) |
+| `HELPER_INPUT` | `file`(녹음 파일 재생, 기본) / `mic`(마이크. 녹음 파일이 필요 없음) / `text`(대사 입력 테스트). 화면의 시작 패널에서 소리 입력을 고르면(`session.start`의 `input`) 그 값이 먼저 |
 | `HELPER_MIC_DEVICE` | 마이크 장치 번호 또는 이름 일부. 비우면 기본 장치 (`python -m engine.audio_input --list`로 확인) |
 | `HELPER_STT` | `whisper`(로컬, 기본) / `google`(chirp_3 3초 조각) / `google_stream`(long 실시간) / `clova_stream` |
 | `HELPER_CHUNK_SEC` / `HELPER_HOP_SEC` | 음성인식에 보내는 조각 길이 / 간격. 간격을 짧게 하면 조각이 겹쳐 반응이 빨라지지만 CPU · API 사용량이 늘어남 |
@@ -90,6 +90,9 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 | 신뢰도 | 추적 점수(0~100)를 0~1로 바꿔 보냄 | — |
 | 위치 맞추기 | 엔진에는 있음(`Aligner.jump_to`) | 화면 → 엔진 메시지 |
 | 오류 알림 | 큐·녹음 파일을 못 찾으면 서버 로그에만 남김 | 오류 메시지 형식 |
+| 소리 입력 선택 | `session.start`의 `input`(file / mic / text)을 읽음. 없으면 `.env`의 `HELPER_INPUT` | — |
+| 대사 입력 테스트 | `input: "text"` 회차에서 `test.say {text}`를 음성인식 결과 한 번으로 보고 실제 추적기 · 이탈 감지로 따라감 (음성인식 엔진 · 키 · 녹음 불필요). 같은 대사를 다시 쳐서 반복도 시험할 수 있게 걸러내기는 하지 않음. 애드리브 알림은 대본에 없는 말을 두 번, `DEVIATE_AFTER_SEC` 넘게 걸쳐 쳐야 뜸 | — |
+| 애드리브 임시 자막 | `subtitle.send {text, source}`를 받아 서버 로그와 회차 기록(`subtitle`)에만 남김 | 수행계획서에서 이번 학기 범위 밖(Won't) · 송출 프로그램 연동(2단계)이라 팀 합의 필요 |
 
 ## 성능 측정 (eval)
 

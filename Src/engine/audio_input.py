@@ -99,6 +99,32 @@ class FileSource:
         self.stopped.set()
 
 
+class TextSource:
+    """대사 입력 테스트용 소리 원천: 소리는 없고, 회차 시작부터 흐른 시간만 잰다.
+    화면이 test.say 로 보낸 글자를 음성인식 결과로 쓴다 (Pipeline.say)."""
+    name = "대사 입력"
+    duration = float("inf")
+
+    def __init__(self):
+        self._t0 = time.perf_counter()
+        self._last_say = float("-inf")
+        self.done = threading.Event()
+
+    def now_audio(self) -> float:
+        return time.perf_counter() - self._t0
+
+    @property
+    def level(self) -> float:
+        # 화면은 0 이면 '입력 없음'으로 본다 → 방금 입력했으면 말소리처럼, 아니면 작은 값 (모의 서버와 같게)
+        return 0.6 if self.now_audio() - self._last_say < 2.0 else 0.05
+
+    def said(self):
+        self._last_say = self.now_audio()
+
+    def stop(self):
+        self.done.set()
+
+
 # ── 마이크 ──────────────────────────────────────────────────
 def _sd():
     """sounddevice 는 마이크를 쓸 때만 불러온다 (테스트 · 파일 재생에는 필요 없음)."""

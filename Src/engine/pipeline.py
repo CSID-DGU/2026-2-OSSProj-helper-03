@@ -4,6 +4,7 @@
 - 재생: FileSource(녹음, 실제 시간 속도) 또는 MicSource(마이크)가 소리를 흘려보냄
 - 인식: 조각 방식이면 chunk_sec 마다 최근 소리를 인식 / 스트리밍이면 결과가 올 때마다
 - 상태: 1초마다 input.status (화면은 5초간 메시지가 없으면 '엔진 응답 없음')
+대사 입력 테스트(TypedInput + TextSource)는 소리 · 음성인식 없이 화면이 보낸 글자를 인식 결과로 쓴다 (say).
 """
 import logging
 import re
@@ -16,7 +17,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 import numpy as np
 
 from .aligner import Aligner
-from .audio_input import FileSource, MicSource
+from .audio_input import FileSource, MicSource, TextSource
 from .cue_loader import Cue
 from .deviation import DeviationDetector
 from .protocol import deviation_alert, input_status, position_update
@@ -27,6 +28,13 @@ log = logging.getLogger("helper.pipeline")
 MAX_SYLLABLES_PER_SEC = 10   # 이보다 빠르면 사람이 말한 게 아니라 환각으로 본다. 두 사람이 겹쳐 말하면
                              # 3초에 28~32음절도 나와서 8 → 10 (지어낸 결과는 3초에 44~52음절)
 STREAM_TAIL = 12             # 스트리밍 결과에서 정렬기에 넣을 최근 글자 수 (공백 제외)
+
+
+class TypedInput(STTEngine):
+    """대사 입력 테스트: 음성인식 대신 화면에서 친 글자를 인식 결과 한 번으로 쓴다 (Pipeline.say).
+    녹음 · 마이크 · 음성인식 키 없이 실제 추적기 · 이탈 감지를 확인하는 용도."""
+    key = label = "대사 입력"
+    mode = "text"
 
 
 def implausible(text: str, prev: str, dur_sec: float) -> bool:
@@ -41,7 +49,7 @@ def implausible(text: str, prev: str, dur_sec: float) -> bool:
 
 
 class Pipeline:
-    def __init__(self, cues: list[Cue], audio: np.ndarray | FileSource | MicSource, stt: STTEngine,
+    def __init__(self, cues: list[Cue], audio: np.ndarray | FileSource | MicSource | TextSource, stt: STTEngine,
                  emit: Callable[[dict], None], *,
                  hints: bool = True, chunk_sec: float = 3.0, hop_sec: float | None = None,
                  deviate_after: float = 3.0,
@@ -51,6 +59,8 @@ class Pipeline:
         # 회차 기록 (engine/session_log.SessionLog). record(kind, **내용). 인식 스레드가 끝날 때 닫는다
         self.record = record or (lambda kind, **fields: None)
         self.detector = DeviationDetector(deviate_after)
+        if stt.mode == "text":           # 입력 사이 조용한 시간은 정상 → '입력 없음'으로 이탈 의심을 지우지 않음
+            self.detector.silence_ms = 0
         # 녹음(ndarray)이면 파일 재생, 아니면 받은 소리 원천(MicSource 등)을 그대로 쓴다
         self.source = FileSource(audio, speed) if isinstance(audio, np.ndarray) else audio
         self.stt, self.emit = stt, emit
@@ -67,8 +77,10 @@ class Pipeline:
     def start(self):
         if self.stt.mode == "chunk":
             targets = [self.source.run, self._chunk_loop]
-        else:
+        elif self.stt.mode == "stream":
             targets = [self._stream_loop]
+        else:                            # 대사 입력: 글자는 say() 로 들어온다
+            targets = []
         targets.append(self._heartbeat_loop)
         for fn in targets:
             th = threading.Thread(target=fn, name=f"helper-{fn.__name__}", daemon=True)
@@ -78,8 +90,20 @@ class Pipeline:
                  len(self.aligner.items))
 
     def stop(self):
+        if self.stt.mode == "text" and not self.stopped.is_set():
+            self._finish()               # 인식 스레드가 없으니 회차 기록은 여기서 닫는다
         self.stopped.set()
         self.source.stop()
+
+    def say(self, text: str):
+        """대사 입력 테스트: 친 글자를 음성인식 결과 한 번으로 보고 추적한다 (input=text 회차만).
+        걸러내기(너무 빠름 · 직전과 같음)는 하지 않는다 — 같은 대사를 다시 쳐서 반복을 시험할 수 있게."""
+        if self.stt.mode != "text":
+            raise ValueError("대사 입력은 input=text 회차에서만 받는다")
+        now = self.source.now_audio()
+        self.source.said()
+        self.record("stt", chunk_start=round(now, 3), chunk_end=round(now, 3), text=text, typed=True)
+        self._handle(text, now, text)
 
     def join(self, timeout: float | None = None):
         for th in self.threads:

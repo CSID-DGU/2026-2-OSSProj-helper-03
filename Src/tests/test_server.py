@@ -64,3 +64,37 @@ def test_session_log(sample_cues, silence, monkeypatch, tmp_path):
     assert stt[0]["hints"] and stt[0]["text"] == lines[0].text
     assert {"kind": "settings", "alert_threshold": 5}.items() <= next(r for r in rows if r["kind"] == "settings").items()
     assert [r["chunk_end"] for r in read_records(path)] == [r["chunk_end"] for r in stt]
+
+
+def test_typed_input_session_over_websocket(sample_cues, monkeypatch, tmp_path):
+    """화면이 input=text 로 시작하면 음성인식 엔진 없이 test.say 글자로 추적하고, subtitle.send 는 회차 기록에 남긴다."""
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    monkeypatch.setattr(srv, "get_engine", lambda name: (_ for _ in ()).throw(AssertionError("엔진을 쓰면 안 됨")))
+    monkeypatch.setenv("HELPER_LOG_DIR", str(tmp_path))
+
+    with TestClient(srv.app) as client, client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "session.start", "show_id": "입력", "cue_file": "sample_cues.csv", "input": "text"})
+        for c in lines[:2]:
+            ws.send_json({"type": "test.say", "text": c.text})
+        got, deadline = [], time.time() + 5
+        while time.time() < deadline and len([m for m in got if m["type"] == "position.update"]) < 2:
+            got.append(ws.receive_json())
+        ws.send_json({"type": "subtitle.send", "text": "잠깐만요 바닥이 미끄러워요", "source": "manual"})
+        ws.send_json({"type": "session.end", "show_id": "입력"})
+
+    assert [m["cue_id"] for m in got if m["type"] == "position.update"] == [c.id for c in lines[:2]]
+    [path] = list(tmp_path.glob("*_입력.jsonl"))
+    deadline = time.time() + 3
+    while time.time() < deadline and '"kind": "end"' not in path.read_text(encoding="utf-8"):
+        time.sleep(0.05)
+    rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["input"] == "text" and rows[-1]["kind"] == "end"
+    assert {"kind": "subtitle", "text": "잠깐만요 바닥이 미끄러워요", "source": "manual"}.items() \
+        <= next(r for r in rows if r["kind"] == "subtitle").items()
+
+
+def test_unknown_input_mode_does_not_start(monkeypatch):
+    msgs = []
+    import pytest
+    with pytest.raises(ValueError):
+        srv.start_session({"cue_file": "sample_cues.csv", "input": "radio"}, msgs.append)
