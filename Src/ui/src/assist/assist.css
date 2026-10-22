@@ -187,19 +187,20 @@ button.small {
   padding: 10px 12px;
   margin: 2px 0;
   font-size: 15px;
-  color: var(--muted);
+  color: #dcdee6; /* 대사는 잘 읽히게 밝게. 번호·화자만 흐리게 */
   border: 1px solid transparent;
   border-radius: 6px;
 }
 
 .cue-id {
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
 .cue-speaker {
   margin-left: 8px;
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--muted);
 }
 
 .cue-type {
@@ -218,7 +219,7 @@ button.small {
 .cue-blackout,
 .cue-notice {
   font-size: 13px;
-  opacity: 0.7;
+  color: var(--muted);
 }
 
 /* ① 현재 위치 */
