@@ -13,6 +13,9 @@ const clock = (ms: number) =>
 
 const seconds = (ms: number) => `${Math.max(0, Math.round(ms / 1000))}초`
 
+/** 누락·반복은 시작 알림 없이 복귀 알림 하나로 오므로 걸린 시간이 거의 0 → '즉시' */
+const duration = (ms: number) => (ms < 1000 ? '즉시' : seconds(ms))
+
 export function DeviationTimeline({ log, now }: Props) {
   return (
     <section className="panel timeline">
@@ -31,7 +34,7 @@ export function DeviationTimeline({ log, now }: Props) {
                 <time>{clock(entry.since)}</time>
                 <span className="timeline-type">{DEVIATION_LABEL[entry.deviationType]}</span>
                 <span className="timeline-duration">
-                  {during ? `진행 중 ${seconds(now - entry.since)}` : seconds((entry.returnedAt ?? now) - entry.since)}
+                  {during ? `진행 중 ${seconds(now - entry.since)}` : duration((entry.returnedAt ?? now) - entry.since)}
                 </span>
                 <span className="timeline-return">{during ? '' : `→ #${entry.returnCueId}`}</span>
               </li>

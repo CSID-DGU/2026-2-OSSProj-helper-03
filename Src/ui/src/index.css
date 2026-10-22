@@ -85,6 +85,41 @@ button:disabled {
   padding: 8px 10px;
 }
 
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #4a4e5c;
+  border-radius: 6px;
+}
+
+.modes legend {
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.start .mode {
+  flex-direction: row;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.mode > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.start .mode input {
+  margin: 3px 0 0;
+  padding: 0;
+}
+
 .conn-open {
   color: var(--ok);
 }

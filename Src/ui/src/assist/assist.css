@@ -38,6 +38,24 @@
   justify-content: space-between;
 }
 
+.title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.elapsed {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mode-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .show-name {
   margin: 0;
   font-size: 16px;
@@ -124,7 +142,7 @@ button.small {
 
 .assist-body {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 5fr) minmax(320px, 4fr);
   gap: var(--gap);
   min-height: 0;
 }
@@ -169,19 +187,20 @@ button.small {
   padding: 10px 12px;
   margin: 2px 0;
   font-size: 15px;
-  color: var(--muted);
+  color: #dcdee6; /* 대사는 잘 읽히게 밝게. 번호·화자만 흐리게 */
   border: 1px solid transparent;
   border-radius: 6px;
 }
 
 .cue-id {
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
 .cue-speaker {
   margin-left: 8px;
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--muted);
 }
 
 .cue-type {
@@ -200,7 +219,7 @@ button.small {
 .cue-blackout,
 .cue-notice {
   font-size: 13px;
-  opacity: 0.7;
+  color: var(--muted);
 }
 
 /* ① 현재 위치 */
@@ -256,6 +275,7 @@ button.small {
   flex-direction: column;
   gap: var(--gap);
   min-height: 0;
+  overflow-y: auto; /* 알림 카드 · 휴대폰 미리보기 · 이탈 기록이 화면보다 길면 이 열만 스크롤 */
 }
 
 .card {
@@ -348,13 +368,6 @@ button.small {
   }
 }
 
-.notes {
-  margin: 0;
-  padding: 0 0 0 16px;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--muted);
-}
 
 /* 이탈 기록 */
 
@@ -472,15 +485,324 @@ button.small {
   }
 }
 
-/* ⑤ 인식 글자 */
+/* 아래: 대사 입력(테스트) + AI 추정 / 실제 대사 */
 
-.transcript p {
-  margin: 6px 0 0;
+/* 팀용 도구: 오퍼레이터 화면과 구분되게 얇고 흐리게 */
+.team-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-tools .panel {
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed #3a3c45;
+}
+
+.recog-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: left;
+  background: none;
+}
+
+.recog-toggle:hover {
+  color: var(--text);
+}
+
+.recog-toggle[aria-expanded='true'] {
+  margin-bottom: 8px;
+}
+
+.recog-caret {
+  width: 10px;
+}
+
+.recog-head,
+.recog-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.recog-head {
+  padding-bottom: 6px;
+  border-bottom: 1px solid #383b46;
+}
+
+.recog-empty {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.recog-list {
+  max-height: 132px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.recog-list li {
+  padding: 5px 0;
+  font-size: 14px;
+  border-top: 1px solid #2f323c;
+}
+
+.recog-list li:first-child {
+  border-top: 0;
+  font-weight: 600;
+}
+
+.recog-ai,
+.recog-heard {
   overflow: hidden;
-  font-size: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.recog-ai b {
+  font-variant-numeric: tabular-nums;
+  color: #c9c3ff;
+}
+
+.recog-heard time {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.recog-sep {
+  margin: 0 8px;
+  color: #4a4e5c;
+}
+
+.recog-tag {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--warn);
+}
+
+.recog-uncertain .recog-ai {
+  color: var(--muted);
+}
+
+/* 대사 입력 (테스트) */
+
+.test-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.test-input p {
+  margin: 0;
+}
+
+.test-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.test-row input {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid #4a4e5c;
+  border-radius: 6px;
+}
+
+/* 애드리브 임시 자막 */
+
+.adlib {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--during-border);
+}
+
+/* 이탈이 없을 때는 제목 한 줄만 (같은 자리를 지켜서 이탈해도 화면이 움직이지 않게) */
+.adlib.adlib-closed {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-color: transparent;
+}
+
+.adlib-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.adlib-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.adlib-head button {
+  margin-left: auto;
+}
+
+.adlib-live {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--during-text);
+  background: var(--during-bg);
+  border-radius: 4px;
+}
+
+.adlib-cols {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adlib-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adlib-label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 26px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.adlib textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text);
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid #4a4e5c;
+  border-radius: 6px;
+}
+
+.adlib textarea:focus {
+  border-color: var(--returned-border);
+  outline: none;
+}
+
+.adlib-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.adlib-actions button:not(.ghost) {
+  background: var(--returned-border);
+}
+
+.adlib-sent {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #383b46;
+}
+
+.adlib-sent li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.adlib-sent time,
+.adlib-src {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.adlib-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-temp {
+  margin: 0;
+  font-size: 12px;
+  color: var(--returned-light);
+  text-align: center;
+}
+
+/* 관객 휴대폰 미리보기 */
+
+.phone-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phone-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.phone-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.phone {
+  padding: 6px;
+  background: #111216;
+  border: 2px solid #3a3c45;
+  border-radius: 14px;
+}
+
+.phone-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 10px 12px;
+  background: #000;
+  border-radius: 10px;
+}
+
+.phone-sub {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #fff;
+  text-align: center;
+}
+
+.phone-sub-dim {
+  opacity: 0.35;
+}
+
 
 /* 좁은 화면: 알림 카드를 위로 */
 @media (max-width: 760px) {
@@ -493,8 +815,29 @@ button.small {
     grid-template-columns: 1fr;
   }
 
+  /* 한 줄로 쌓을 때 순서: 알림 → 애드리브 임시 자막 → 대본 목록 → 휴대폰 미리보기 → 이탈 기록 */
   .side {
-    order: -1;
+    display: contents;
+  }
+
+  .assist-body > .side > .card {
+    order: 1;
+  }
+
+  .assist-body > .side > .adlib {
+    order: 2;
+  }
+
+  .assist-body > .script {
+    order: 3;
+  }
+
+  .assist-body > .side > .phone-wrap {
+    order: 4;
+  }
+
+  .assist-body > .side > .timeline {
+    order: 5;
   }
 
   .script {

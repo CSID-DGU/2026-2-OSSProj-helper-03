@@ -1,29 +1,46 @@
 // ② 보조 화면 (공연 중, 보기 전용). 기준: 수행계획서 그림 4 보조 화면 와이어프레임.
-// 이 화면에는 송출 기능을 두지 않는다 (요구사항 R3).
+// 대본 큐 송출 기능은 두지 않는다 (요구사항 R3). 애드리브 임시 자막만 오퍼레이터가 확인해서 송출한다 (팀 합의 필요).
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { Cue } from '../cues'
+import type { InputMode, SubtitleSource } from '../protocol'
 import { RETURN_HIGHLIGHT_MS, STALE_MS } from '../settings'
 import type { EngineState } from '../useEngine'
 import { useNow } from '../useNow'
+import { formatElapsed } from '../time'
+import { AdlibPanel, type SentSubtitle } from './AdlibPanel'
 import { DeviationCard, type HoldReason } from './DeviationCard'
 import { DeviationTimeline } from './DeviationTimeline'
 import { EdgeFlash } from './EdgeFlash'
+import { PhonePreview } from './PhonePreview'
+import { RecognitionLog } from './RecognitionLog'
 import { ScriptList } from './ScriptList'
+import { TestInput } from './TestInput'
 import './assist.css'
+
+const INPUT_LABEL: Record<InputMode, string> = { file: '음성 파일', mic: '마이크', text: '대사 입력 (테스트)' }
 
 interface Props {
   showName: string
   cues: Cue[]
+  input: InputMode
+  /** 회차 시작 시각 (epoch ms) */
+  startedAt: number
   engine: EngineState
   threshold: number
   onEnd: () => void
+  /** 대사 입력 모드에서 입력한 대사를 보냄 */
+  onSay: (text: string) => void
+  /** 애드리브 임시 자막 송출 */
+  onSendSubtitle: (text: string, source: SubtitleSource) => void
 }
 
-export function AssistScreen({ showName, cues, engine, threshold, onEnd }: Props) {
+export function AssistScreen(props: Props) {
+  const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle } = props
   const now = useNow()
+  const [sent, setSent] = useState<SentSubtitle[]>([])
   const cueById = useMemo(() => new Map(cues.map((c) => [c.id, c])), [cues])
-  const { position, deviation, deviationAt, deviationLog, input, connection, lastMessageAt } = engine
+  const { position, deviation, deviationAt, deviationLog, recognitionLog, input, connection, lastMessageAt } = engine
 
   const stale = connection === 'open' && lastMessageAt !== null && now - lastMessageAt > STALE_MS
   const noInput = input !== null && input.audio_level === 0
@@ -31,6 +48,24 @@ export function AssistScreen({ showName, cues, engine, threshold, onEnd }: Props
 
   const hold: HoldReason =
     connection !== 'open' ? 'disconnected' : stale ? 'stale' : noInput ? 'no-input' : song ? 'song' : null
+
+  const deviating = deviation !== null && deviation.return_cue_id === null
+
+  const sendSubtitle = (text: string, source: SubtitleSource) => {
+    onSendSubtitle(text, source)
+    setSent((list) => [...list, { at: Date.now(), text, source }])
+  }
+
+  // 휴대폰 미리보기: 지금 큐로 온 뒤에 임시 자막을 송출했으면 그것을 보여 준다
+  const cueSince = useMemo(() => {
+    let since = 0
+    for (let i = recognitionLog.length - 1; i >= 0 && recognitionLog[i].cueId === position?.cue_id; i--) {
+      since = recognitionLog[i].at
+    }
+    return since
+  }, [recognitionLog, position?.cue_id])
+  const lastSent = sent[sent.length - 1]
+  const tempSubtitle = lastSent && lastSent.at >= cueSince ? lastSent.text : undefined
 
   const returnId =
     deviation?.return_cue_id != null && deviationAt !== null && now - deviationAt < RETURN_HIGHLIGHT_MS
@@ -41,7 +76,13 @@ export function AssistScreen({ showName, cues, engine, threshold, onEnd }: Props
     <div className="assist">
       <EdgeFlash deviation={deviation} />
       <header className="assist-head">
-        <h1 className="show-name">{showName}</h1>
+        <div className="title">
+          <h1 className="show-name">{showName}</h1>
+          <span className="elapsed" title="회차를 시작한 뒤 흐른 시간">
+            {formatElapsed(now - startedAt)}
+          </span>
+          <span className="mode-label">{INPUT_LABEL[inputMode]}</span>
+        </div>
         <div className="status">
           <InputBadge hold={hold} level={input?.audio_level ?? null} />
           <span className={`badge ${song ? 'badge-song' : ''}`}>{song ? '노래 구간' : '대사 구간'}</span>
@@ -59,24 +100,32 @@ export function AssistScreen({ showName, cues, engine, threshold, onEnd }: Props
           confidence={position?.confidence ?? null}
           threshold={threshold}
           returnId={returnId}
-          paused={song || noInput}
+          paused={noInput}
         />
 
+        {/* 오른쪽: 위에서부터 알림 → 애드리브 임시 자막 → 휴대폰 미리보기 → 이탈 기록. 순서가 바뀌지 않게 고정 */}
         <div className="side">
           <DeviationCard deviation={deviation} deviationAt={deviationAt} hold={hold} cueById={cueById} now={now} />
+          <AdlibPanel
+            deviationSince={deviating && deviation ? deviation.since : null}
+            recognitionLog={recognitionLog}
+            sent={sent}
+            onSend={sendSubtitle}
+          />
+          <PhonePreview
+            cue={position ? cueById.get(position.cue_id) : undefined}
+            deviating={deviating}
+            temp={tempSubtitle}
+          />
           <DeviationTimeline log={deviationLog} now={now} />
-          <ul className="notes">
-            <li>일치 점수가 기준({threshold.toFixed(2)}) 미만이면 알림을 띄우지 않습니다.</li>
-            <li>노래 구간·음향 입력 끊김 시 추적을 멈추고 상태만 표시합니다.</li>
-            <li>이 화면에는 송출 버튼이 없습니다. 송출은 기존 프로그램에서 하세요.</li>
-          </ul>
         </div>
       </div>
 
-      <section className="panel transcript">
-        <h2>인식 글자 (확인용)</h2>
-        <p>{position?.transcript ? `… ${position.transcript} …` : '—'}</p>
-      </section>
+      {/* 아래: 팀용 도구 (테스트 입력 · 성능 확인). 오퍼레이터 화면과 구분되게 얇게 */}
+      <div className="team-tools">
+        {inputMode === 'text' && <TestInput cues={cues} currentId={position?.cue_id ?? null} onSay={onSay} />}
+        <RecognitionLog entries={recognitionLog} cueById={cueById} startedAt={startedAt} threshold={threshold} />
+      </div>
     </div>
   )
 }

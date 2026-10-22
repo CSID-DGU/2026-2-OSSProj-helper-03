@@ -18,7 +18,7 @@ const HOLD_TEXT: Record<Exclude<HoldReason, null>, { title: string; body: string
   disconnected: { title: '엔진 연결 끊김', body: '다시 연결하는 중입니다. 기존 방식대로 송출하세요.' },
   stale: { title: '엔진 응답 없음', body: '위치 정보가 들어오지 않습니다. 기존 방식대로 송출하세요.' },
   'no-input': { title: '음향 입력 없음', body: '소리가 들어오지 않아 알림을 멈췄습니다.' },
-  song: { title: '노래 구간', body: '노래 구간에서는 위치 추적을 쉽니다.' },
+  song: { title: '노래 구간', body: '가사를 따라가지만, 노래 중에는 이탈 알림을 띄우지 않습니다.' },
 }
 
 interface Props {
@@ -43,7 +43,6 @@ export function DeviationCard({ deviation, deviationAt, hold, cueById, now }: Pr
           대본 이탈 알림 · {DEVIATION_LABEL[deviation.deviation_type]} · 경과 {seconds(now - deviation.since)}
         </p>
         <h2 className="card-title">{HEADLINE[deviation.deviation_type].during}</h2>
-        <p className="card-body">대본으로 돌아오면 큐 번호를 알려 드립니다. 그동안은 기존 방식대로 송출하세요.</p>
       </section>
     )
   }
