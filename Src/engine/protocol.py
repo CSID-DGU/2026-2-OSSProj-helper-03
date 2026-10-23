@@ -13,7 +13,10 @@ def deviation_alert(deviation_type: str, since: int, return_cue_id: int | None) 
             "return_cue_id": None if return_cue_id is None else int(return_cue_id)}
 
 
-def input_status(audio_level: float, segment: str) -> dict:
+def input_status(audio_level: float, segment: str, audio_sec: float | None = None) -> dict:
+    """audio_sec: 녹음 재생 회차에서 엔진이 재생 중인 위치(초). 화면이 같은 녹음을 맞춰 틀 때 쓴다 (그 외에는 안 보냄)."""
     assert segment in ("dialogue", "song")
-    return {"type": "input.status", "audio_level": round(max(0.0, min(1.0, audio_level)), 2),
-            "segment": segment}
+    msg = {"type": "input.status", "audio_level": round(max(0.0, min(1.0, audio_level)), 2), "segment": segment}
+    if audio_sec is not None:
+        msg["audio_sec"] = round(audio_sec, 2)
+    return msg

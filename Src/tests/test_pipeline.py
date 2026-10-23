@@ -215,3 +215,36 @@ def test_say_only_in_typed_input_session(sample_cues, silence):
     pipe = Pipeline(sample_cues, silence, FakeSTT([]), print)
     with pytest.raises(ValueError):
         pipe.say("안녕하세요")
+
+
+def test_operator_jump_moves_position_and_closes_deviation(sample_cues):
+    """위치 맞추기: 추적 위치를 옮기고, 이탈 중이었으면 그 큐를 복귀로 알린다 (화면 알림 카드가 닫히게)."""
+    from engine.audio_input import TextSource
+    from engine.pipeline import TypedInput
+
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    msgs = []
+    pipe = Pipeline(sample_cues, TextSource(), TypedInput(), msgs.append, deviate_after=0.2)
+    pipe.say(lines[0].text)
+    pipe.say("아 오늘 비 진짜 많이 오네 여러분 우산 챙기셨어요")
+    time.sleep(0.3)
+    pipe.say("버스 정류장까지 뛰어오느라 숨이 다 차네요 정말로")
+    assert of(msgs, "deviation.alert")[-1]["return_cue_id"] is None          # 이탈 중
+    assert pipe.jump_to(lines[5].id)
+    assert of(msgs, "position.update")[-1] == {"type": "position.update", "cue_id": lines[5].id,
+                                                "confidence": 1.0, "latency_ms": 0, "transcript": ""}
+    assert of(msgs, "deviation.alert")[-1]["return_cue_id"] == lines[5].id    # 맞춘 곳으로 복귀
+    assert not pipe.detector.deviating
+    assert not pipe.jump_to(99999)                                             # 모르는 큐
+
+
+def test_file_playback_reports_audio_position(sample_cues):
+    """녹음 재생 회차는 input.status 에 재생 위치(audio_sec)를 담는다 (화면이 같은 녹음을 맞춰 틀 때)."""
+    msgs = []
+    pipe = Pipeline(sample_cues, np.zeros(16000 * 30, dtype="float32"), FakeSTT([]), msgs.append, speed=10)
+    pipe.start()
+    time.sleep(1.3)
+    pipe.stop()
+    pipe.join(timeout=3)
+    sec = [m["audio_sec"] for m in of(msgs, "input.status") if "audio_sec" in m]
+    assert sec and 0 <= sec[0] < sec[-1] <= 30

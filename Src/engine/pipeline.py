@@ -19,7 +19,7 @@ import numpy as np
 from .aligner import Aligner
 from .audio_input import FileSource, MicSource, TextSource
 from .cue_loader import Cue
-from .deviation import DeviationDetector
+from .deviation import START_TYPE, DeviationDetector
 from .protocol import deviation_alert, input_status, position_update
 from .stt import STTEngine
 
@@ -105,6 +105,22 @@ class Pipeline:
         self.record("stt", chunk_start=round(now, 3), chunk_end=round(now, 3), text=text, typed=True)
         self._handle(text, now, text)
 
+    def jump_to(self, cue_id: int) -> bool:
+        """오퍼레이터 위치 맞추기 (화면에서 대본 줄 클릭 · 이전/다음): 추적 위치를 이 큐로 옮기고
+        (추적 대상이 아닌 큐면 그 앞 추적 큐), 이탈 판단도 여기서 다시 시작한다. 송출이 아니라 추정 위치만 고친다."""
+        with self.lock:
+            if not self.aligner.jump_to(cue_id):
+                return False
+            since = self.detector.since if self.detector.deviating else None
+            self.detector.reset(self.aligner.pos)
+            cue = self.aligner.current
+        self.emit(position_update(cue.id, 1.0, 0, ""))
+        if since is not None:     # 이탈 중이었으면 맞춘 곳을 복귀로 알린다 (화면 알림 카드가 닫히게)
+            self.emit(deviation_alert(START_TYPE, since, cue.id))
+        self.record("jump", t=round(self.source.now_audio(), 3), cue=cue.id, requested=cue_id)
+        log.info("위치 맞추기: #%s", cue.id)
+        return True
+
     def join(self, timeout: float | None = None):
         for th in self.threads:
             th.join(timeout)
@@ -159,10 +175,12 @@ class Pipeline:
         while not self.stopped.is_set():
             ended = self.source.done.is_set()
             level = 0.0 if ended else self.source.level
+            # 녹음 재생이면 재생 위치도 보낸다 (화면이 같은 녹음을 틀 때 맞추기용)
+            audio_sec = self.source.now_audio() if isinstance(self.source, FileSource) and not ended else None
             with self.lock:
                 seg = "dialogue" if ended else self._segment()
                 self.detector.tick(int(time.time() * 1000), level)   # 오래 조용하면 '입력 없음' (알림 안 보냄)
-            self.emit(input_status(level, seg))
+            self.emit(input_status(level, seg, audio_sec))
             self.stopped.wait(1.0)
 
     # ── 조각 방식 ────────────────────────────────────────────

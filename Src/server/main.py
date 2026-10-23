@@ -8,6 +8,8 @@
 - session.end   {show_id}           : 멈춤
 - test.say {text}                   : 대사 입력 테스트 회차에서, 친 글자를 음성인식 결과 한 번으로 보고 추적
 - subtitle.send {text, source}      : 애드리브 임시 자막 송출. 송출 프로그램 연동 전이라 회차 기록 · 로그에만 남김
+- position.set {cue_id}             : 오퍼레이터 위치 맞추기 (추적 위치를 이 큐로, 이탈 판단도 여기서 다시)
+GET /session/audio : 진행 중인 녹음 재생 회차의 녹음 파일 (화면이 같은 녹음을 틀어 들으면서 볼 때)
 - settings.update {alert_threshold} : 지금은 기록만
 엔진 → 화면: position.update / deviation.alert / input.status
 회차마다 인식 글자 · 추적 위치 · 알림을 HELPER_LOG_DIR(기본 Src/logs)에 JSONL 로 남긴다 (engine/session_log.py)
@@ -18,7 +20,8 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 
 from engine.aligner import parse_settings
 from engine.audio_input import MicSource, TextSource, load_wav
@@ -33,6 +36,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s
 log = logging.getLogger("helper.server")
 
 _engines: dict[str, STTEngine] = {}
+_audio_file: Path | None = None   # 진행 중인 녹음 재생 회차의 녹음 (GET /session/audio)
 
 
 @asynccontextmanager
@@ -90,6 +94,7 @@ INPUT_MODES = ("file", "mic", "text")
 
 
 def start_session(msg: dict, emit) -> Pipeline:
+    global _audio_file
     cue_path = find_cue_file(msg.get("cue_file", ""))
     mode = msg.get("input") or env("HELPER_INPUT", "file")   # 화면에서 고른 소리 입력이 먼저
     if mode not in INPUT_MODES:
@@ -108,6 +113,7 @@ def start_session(msg: dict, emit) -> Pipeline:
         audio_path = find_audio_file(cue_path)
         audio, src = load_wav(audio_path), f"녹음 {audio_path.name}"
         speed = env_float("HELPER_SPEED", 1.0)
+    _audio_file = audio_path if mode == "file" else None
     align = parse_settings(env("HELPER_ALIGN"))
     log.info("큐 %s, %s, 음성인식 %s%s", cue_path.name, src, stt.label, f", 추적기 {align}" if align else "")
     pipe = Pipeline(load_cues(cue_path), audio, stt, emit,
@@ -132,6 +138,14 @@ def open_session_log(show_id: str) -> SessionLog | None:
     if env("HELPER_LOG_DIR").lower() == "off":
         return None
     return SessionLog.open_in(env_path("HELPER_LOG_DIR") or SRC / "logs", show_id)
+
+
+@app.get("/session/audio")
+def session_audio():
+    """녹음 재생 회차의 녹음 파일. 화면이 같은 녹음을 엔진 재생 위치(input.status 의 audio_sec)에 맞춰 튼다."""
+    if _audio_file is None or not _audio_file.exists():
+        raise HTTPException(404, "녹음 재생 회차가 아님")
+    return FileResponse(_audio_file, media_type="audio/wav")
 
 
 @app.get("/health")
@@ -184,6 +198,14 @@ async def ws_endpoint(ws: WebSocket):
                         pipe.say(str(msg.get("text") or ""))
                     except ValueError as ex:   # 녹음 · 마이크 회차에 온 대사 입력
                         log.warning("test.say 무시: %s", ex)
+            elif kind == "position.set":
+                try:
+                    cue_id = int(msg.get("cue_id"))
+                except (TypeError, ValueError):
+                    log.warning("position.set: cue_id 가 숫자가 아님: %s", msg)
+                    continue
+                if not pipe or not pipe.jump_to(cue_id):
+                    log.warning("position.set 무시: 회차가 없거나 모르는 큐 #%s", cue_id)
             elif kind == "subtitle.send":
                 # 애드리브 임시 자막: 송출 프로그램 연동(2단계) 전이라 기록만 남긴다
                 log.info("임시 자막 송출 (%s): %s", msg.get("source"), msg.get("text"))

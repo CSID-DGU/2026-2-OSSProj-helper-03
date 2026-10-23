@@ -27,3 +27,8 @@ def test_input_status_fields():
     msg = input_status(1.7, "song")
     assert set(msg) == ts_fields("InputStatus")
     assert msg["audio_level"] == 1.0
+
+
+def test_input_status_audio_position_is_optional():
+    assert "audio_sec" not in input_status(0.5, "dialogue")
+    assert input_status(0.5, "dialogue", 12.345)["audio_sec"] == 12.35
