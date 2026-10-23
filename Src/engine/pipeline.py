@@ -20,7 +20,7 @@ from .aligner import Aligner
 from .audio_input import FileSource, MicSource, TextSource
 from .cue_loader import Cue
 from .deviation import START_TYPE, DeviationDetector
-from .protocol import deviation_alert, input_status, position_update
+from .protocol import deviation_alert, engine_error, input_status, position_update
 from .stt import STTEngine
 
 log = logging.getLogger("helper.pipeline")
@@ -28,6 +28,7 @@ log = logging.getLogger("helper.pipeline")
 MAX_SYLLABLES_PER_SEC = 10   # 이보다 빠르면 사람이 말한 게 아니라 환각으로 본다. 두 사람이 겹쳐 말하면
                              # 3초에 28~32음절도 나와서 8 → 10 (지어낸 결과는 3초에 44~52음절)
 STREAM_TAIL = 12             # 스트리밍 결과에서 정렬기에 넣을 최근 글자 수 (공백 제외)
+FAIL_ALERT_AFTER = 3         # 음성인식 요청이 이만큼 연달아 실패하면 화면에 알림 (인터넷 끊김 · 키 만료 등)
 
 
 class TypedInput(STTEngine):
@@ -70,6 +71,7 @@ class Pipeline:
         self.song_segment = song_segment
         self.stopped = threading.Event()
         self.lock = threading.Lock()
+        self.fail_streak = 0            # 연달아 실패한 음성인식 요청 수
         self.threads: list[threading.Thread] = []
         self.prev_text = ""
 
@@ -242,6 +244,14 @@ class Pipeline:
         except Exception as ex:
             log.warning("인식 실패 (%.1fs): %s", rec["chunk_end"], ex)
             text, rec["error"] = "", str(ex)
+            with self.lock:              # 작업 스레드 여러 개가 같이 센다
+                self.fail_streak += 1
+                alert = self.fail_streak == FAIL_ALERT_AFTER
+            if alert:                    # 연달아 실패하면 한 번 알린다 (성공하면 다시 셈)
+                self.emit(engine_error(f"음성인식 요청이 {FAIL_ALERT_AFTER}번 연달아 실패했습니다: {ex}", "recognize"))
+        else:
+            with self.lock:
+                self.fail_streak = 0
         rec.update(text=text, proc_sec=round(time.perf_counter() - t0, 3))
         return text
 
@@ -279,6 +289,7 @@ class Pipeline:
                     prev = ""
         except Exception as ex:
             log.warning("스트리밍 끊김: %s", ex)
+            self.emit(engine_error(f"음성인식 스트리밍이 끊겼습니다: {ex}", "recognize"))
             self.record("error", error=str(ex))
         finally:
             self.source.done.set()

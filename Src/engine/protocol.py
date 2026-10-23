@@ -13,6 +13,12 @@ def deviation_alert(deviation_type: str, since: int, return_cue_id: int | None) 
             "return_cue_id": None if return_cue_id is None else int(return_cue_id)}
 
 
+def engine_error(message: str, during: str) -> dict:
+    """화면이 알아야 할 엔진 오류. during = session.start(회차를 못 엶) / recognize(음성인식이 계속 실패)."""
+    assert during in ("session.start", "recognize")
+    return {"type": "engine.error", "message": str(message), "during": during}
+
+
 def input_status(audio_level: float, segment: str, audio_sec: float | None = None) -> dict:
     """audio_sec: 녹음 재생 회차에서 엔진이 재생 중인 위치(초). 화면이 같은 녹음을 맞춰 틀 때 쓴다 (그 외에는 안 보냄)."""
     assert segment in ("dialogue", "song")

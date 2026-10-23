@@ -40,3 +40,13 @@ def test_input_status_fields():
 def test_input_status_audio_position_is_optional():
     assert "audio_sec" not in input_status(0.5, "dialogue")
     assert input_status(0.5, "dialogue", 12.345)["audio_sec"] == 12.35
+
+
+def test_engine_error_fields():
+    """화면 protocol.ts 에 EngineError 가 있으면 필드를 맞춘다 (화면 쪽이 아직 없으면 건너뜀)."""
+    import pytest
+    from engine.protocol import engine_error
+    src = (SRC / "ui" / "src" / "protocol.ts").read_text(encoding="utf-8")
+    if "export interface EngineError" not in src:
+        pytest.skip("화면 protocol.ts 에 EngineError 가 아직 없음")
+    assert same_fields(engine_error("키 파일이 없음", "session.start"), "EngineError")

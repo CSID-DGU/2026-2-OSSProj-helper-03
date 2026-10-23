@@ -11,7 +11,7 @@
 - position.set {cue_id}             : 오퍼레이터 위치 맞추기 (추적 위치를 이 큐로, 이탈 판단도 여기서 다시)
 GET /session/audio : 진행 중인 녹음 재생 회차의 녹음 파일 (화면이 같은 녹음을 틀어 들으면서 볼 때)
 - settings.update {alert_threshold} : 지금은 기록만
-엔진 → 화면: position.update / deviation.alert / input.status
+엔진 → 화면: position.update / deviation.alert / input.status / engine.error (회차를 못 엶 · 음성인식이 계속 실패)
 회차마다 인식 글자 · 추적 위치 · 알림을 HELPER_LOG_DIR(기본 Src/logs)에 JSONL 로 남긴다 (engine/session_log.py)
 """
 import asyncio
@@ -28,6 +28,7 @@ from engine.audio_input import MicSource, TextSource, load_wav
 from engine.config import SRC, env, env_float, env_path
 from engine.cue_loader import load_cues
 from engine.pipeline import Pipeline, TypedInput
+from engine.protocol import engine_error
 from engine.session_log import SessionLog
 from engine.stt import STTEngine, make_engine
 from engine.vad import VADGate
@@ -182,8 +183,9 @@ async def ws_endpoint(ws: WebSocket):
                     pipe.stop()
                 try:
                     pipe = await loop.run_in_executor(None, start_session, msg, emit)
-                except Exception as ex:   # 화면에는 오류 메시지 형식이 없어서 서버 로그로 알린다
+                except Exception as ex:   # 키 없음 · 파일 없음 · 마이크 오류 등: 서버 로그와 화면에 알린다
                     log.error("회차 시작 실패: %s", ex)
+                    emit(engine_error(f"회차를 시작하지 못했습니다: {ex}", "session.start"))
                     pipe = None
             elif kind == "session.end":
                 if pipe:

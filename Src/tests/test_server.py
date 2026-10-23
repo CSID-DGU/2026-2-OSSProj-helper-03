@@ -124,3 +124,12 @@ def test_session_audio_and_position_set(sample_cues, silence, monkeypatch):
             ws.receive_json()
             assert client.get("/session/audio").status_code == 404   # 녹음 재생 회차가 아니면 없음
             ws.send_json({"type": "session.end", "show_id": "t2"})
+
+
+def test_session_start_failure_is_shown_on_screen(monkeypatch):
+    """큐 파일이 없거나 키가 없어 회차를 못 열면 서버 로그뿐 아니라 화면에도 engine.error 로 알린다."""
+    with TestClient(srv.app) as client, client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "session.start", "show_id": "x", "cue_file": "없는_대본.csv", "input": "text"})
+        msg = ws.receive_json()
+        assert msg["type"] == "engine.error" and msg["during"] == "session.start"
+        assert "없는_대본.csv" in msg["message"]

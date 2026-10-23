@@ -250,3 +250,32 @@ def test_file_playback_reports_audio_position(sample_cues):
     pipe.join(timeout=3)
     sec = [m["audio_sec"] for m in of(msgs, "input.status") if "audio_sec" in m]
     assert len(sec) >= 2 and 0 <= sec[0] < sec[-1] <= 30
+
+
+def test_repeated_recognition_failures_are_reported_once(sample_cues, silence):
+    """음성인식이 연달아 실패하면(인터넷 끊김 · 키 만료) 화면에 한 번 알린다. 성공하면 다시 센다."""
+    from engine.pipeline import FAIL_ALERT_AFTER
+
+    class Flaky(STTEngine):
+        key = label = "flaky"
+        mode = "chunk"
+
+        def __init__(self):
+            self.calls = 0
+
+        def transcribe(self, audio, hints=None):
+            self.calls += 1
+            if self.calls <= 5 or self.calls == 7:       # 다섯 번 실패, 한 번 성공, 다시 한 번 실패
+                raise ConnectionError("network down")
+            return ""
+
+    msgs = []
+    pipe = Pipeline(sample_cues, silence, Flaky(), msgs.append, speed=30)
+    pipe.start()
+    pipe.source.done.wait(timeout=10)
+    time.sleep(0.3)
+    pipe.stop()
+    pipe.join(timeout=5)
+    errors = of(msgs, "engine.error")
+    assert len(errors) == 1 and errors[0]["during"] == "recognize"
+    assert f"{FAIL_ALERT_AFTER}번" in errors[0]["message"] and "network down" in errors[0]["message"]
