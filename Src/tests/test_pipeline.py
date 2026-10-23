@@ -148,20 +148,24 @@ def test_concurrent_requests_keep_up_in_order(sample_cues):
     assert shown == lines[:6]                                              # 처리는 조각 순서대로
 
 
-def test_late_result_is_used_when_it_arrives(sample_cues):
+def test_late_result_is_used_when_it_arrives(sample_cues, monkeypatch):
     """앞 조각이 느려 뒤 조각이 먼저 끝나면 기다리지 않고 뒤 조각부터 쓰고, 앞 조각은 도착하면 쓴다."""
+    import engine.pipeline as P
+    monkeypatch.setattr(P, "LATE_KEEP_SEC", 100.0)   # 언제 와도 쓰게 (CI 가 느려도 결과가 같게)
     lines = [c.text for c in sample_cues if c.type == "dialogue"]
     ends = [1.5 * (i + 1) for i in range(6)]
     texts = dict(zip(ends, lines))
-    pipe, shown = run_slow(sample_cues, SlowSTT(texts, lambda end: 0.25 if end == 3.0 else 0.05), workers=3)
+    pipe, shown = run_slow(sample_cues, SlowSTT(texts, lambda end: 0.6 if end == 3.0 else 0.05), workers=3)
     assert pipe.stats["late"] == 1 and pipe.stats["late_dropped"] == 0
     rec = next(r for r in pipe.records if r["chunk_end"] == 3.0)
     assert rec["late"] and rec["late_used"]
     assert shown.index(texts[4.5]) < shown.index(texts[3.0])             # 화면은 느린 요청을 기다리지 않음
 
 
-def test_too_old_late_result_is_dropped(sample_cues):
+def test_too_old_late_result_is_dropped(sample_cues, monkeypatch):
     """한참 늦게 온 결과(가장 최근 조각보다 LATE_KEEP_SEC 넘게 앞선 소리)는 버린다."""
+    import engine.pipeline as P
+    monkeypatch.setattr(P, "LATE_KEEP_SEC", 0.5)     # 뒤 조각(4.5초)보다 1.5초 앞선 소리 → 반드시 버림
     lines = [c.text for c in sample_cues if c.type == "dialogue"]
     ends = [1.5 * (i + 1) for i in range(6)]
     texts = dict(zip(ends, lines))
