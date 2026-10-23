@@ -61,7 +61,16 @@ export interface SubtitleSend {
   source: SubtitleSource
 }
 
-export type ClientMessage = SessionStart | SessionEnd | SettingsUpdate | TestSay | SubtitleSend
+/**
+ * (추가) 위치 맞추기. 오퍼레이터가 대본 줄을 누르거나 이전/다음 버튼으로 AI 추정 위치를 고친다.
+ * 송출이 아니라 엔진의 추적 위치만 옮긴다. 엔진은 그 큐에서 추적 · 이탈 판단을 다시 시작한다.
+ */
+export interface PositionSet {
+  type: 'position.set'
+  cue_id: number
+}
+
+export type ClientMessage = SessionStart | SessionEnd | SettingsUpdate | TestSay | SubtitleSend | PositionSet
 
 // ── 엔진 → 화면 ──────────────────────────────────────────
 
@@ -96,6 +105,11 @@ export interface InputStatus {
   /** 음량 0~1. 0이면 입력 없음 */
   audio_level: number
   segment: Segment
+  /**
+   * (추가) 녹음 재생 회차에서 엔진이 재생 중인 위치(초). 화면이 같은 녹음(GET /session/audio)을
+   * 이 위치에 맞춰 틀어, 소리를 들으면서 자막을 볼 수 있게 한다. 녹음 재생이 아니면 없음.
+   */
+  audio_sec?: number
 }
 
 /** (2단계, 연동 시) 송출 프로그램이 실제로 송출한 큐 */

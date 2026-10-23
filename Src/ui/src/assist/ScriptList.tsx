@@ -1,7 +1,8 @@
 // ③ 대본 목록 + ① 현재 위치와 신뢰도.
 // 전체 큐를 그리고 AI가 추정한 줄을 가운데로 따라간다. 손으로 스크롤하면 잠시 따라가기를 멈춘다.
+// 위치 맞추기: 줄을 누르거나 이전/다음 버튼으로 AI 추정 위치를 고친다 (엔진에 position.set, 송출 아님).
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CUE_TYPE_LABEL, type Cue } from '../cues'
 import { MANUAL_SCROLL_PAUSE_MS } from '../settings'
 
@@ -15,9 +16,11 @@ interface Props {
   returnId: number | null
   /** 음향 입력이 없으면 현재 줄 표시를 흐리게 */
   paused: boolean
+  /** 위치 맞추기: 이 큐로 AI 추정 위치를 옮긴다 */
+  onJump: (cueId: number) => void
 }
 
-export function ScriptList({ cues, currentId, confidence, threshold, returnId, paused }: Props) {
+export function ScriptList({ cues, currentId, confidence, threshold, returnId, paused, onJump }: Props) {
   const listRef = useRef<HTMLOListElement>(null)
   const rowRefs = useRef(new Map<number, HTMLLIElement>())
   const [manualUntil, setManualUntil] = useState(0)
@@ -42,17 +45,45 @@ export function ScriptList({ cues, currentId, confidence, threshold, returnId, p
   const pauseFollowing = () => setManualUntil(Date.now() + MANUAL_SCROLL_PAUSE_MS)
   const resumeFollowing = () => setManualUntil(0)
 
+  // 이전 / 다음은 엔진이 따라가는 줄(대사 · 가사)끼리만
+  const spoken = useMemo(() => cues.filter((c) => c.type === 'dialogue' || c.type === 'lyric'), [cues])
+  const at = spoken.findIndex((c) => c.id === currentId)
+  const prev = at > 0 ? spoken[at - 1] : undefined
+  const next = at >= 0 ? spoken[at + 1] : spoken[0]
+  const jump = (cueId: number) => {
+    resumeFollowing()
+    onJump(cueId)
+  }
+
   const uncertain = confidence !== null && confidence < threshold
 
   return (
     <section className="panel script">
       <header className="panel-head">
         <h2>대본 목록</h2>
-        {!following && (
-          <button className="ghost small" onClick={resumeFollowing}>
-            현재 위치로
+        <div className="script-nav">
+          {!following && (
+            <button className="ghost small" onClick={resumeFollowing}>
+              현재 위치로
+            </button>
+          )}
+          <button
+            className="ghost small"
+            disabled={!prev}
+            onClick={() => prev && jump(prev.id)}
+            title="AI 추정 위치를 한 줄 위로 맞추기"
+          >
+            ◀ 이전
           </button>
-        )}
+          <button
+            className="ghost small"
+            disabled={!next}
+            onClick={() => next && jump(next.id)}
+            title="AI 추정 위치를 한 줄 아래로 맞추기"
+          >
+            다음 ▶
+          </button>
+        </div>
       </header>
       <ol ref={listRef} className="script-list" onWheel={pauseFollowing} onTouchMove={pauseFollowing}>
         {cues.map((cue) => {
@@ -78,6 +109,13 @@ export function ScriptList({ cues, currentId, confidence, threshold, returnId, p
               }}
               className={classes}
               aria-current={isCurrent ? 'true' : undefined}
+              role="button"
+              tabIndex={0}
+              title="누르면 여기로 위치 맞추기"
+              onClick={() => jump(cue.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') jump(cue.id)
+              }}
             >
               <span className="cue-id">#{cue.id}</span>
               <span className="cue-text">

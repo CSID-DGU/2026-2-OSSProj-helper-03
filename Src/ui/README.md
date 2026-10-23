@@ -112,10 +112,11 @@ ui/
 | `session.start` / `session.end` | 화면 → 엔진 | `show_id`, `cue_file`, `input`(추가) |
 | `test.say` (추가) | 화면 → 엔진 | `text` |
 | `subtitle.send` (추가) | 화면 → 엔진 | `text`, `source` |
+| `position.set` (추가) | 화면 → 엔진 | `cue_id` |
 | `settings.update` | 화면 → 엔진 | `alert_threshold` |
 | `position.update` | 엔진 → 화면 | `cue_id`, `confidence`, `latency_ms` |
 | `deviation.alert` | 엔진 → 화면 | `deviation_type`, `since`, `return_cue_id` |
-| `input.status` | 엔진 → 화면 | `audio_level`, `segment` |
+| `input.status` | 엔진 → 화면 | `audio_level`, `segment`, `audio_sec`(추가, 녹음 재생 회차만) |
 | `cue.onair` (2단계) | 송출 프로그램 → 엔진 → 화면 | `cue_id`, `sent_at` |
 
 모든 메시지는 `{"type": "position.update", "cue_id": 845, ...}`처럼 `type`에 메시지 이름을 넣은 JSON 하나입니다.
@@ -131,6 +132,8 @@ ui/
 - `session.start`에 `input`(`file` / `mic` / `text`)을 추가했습니다. 화면에서 소리 입력을 고르기 위해서입니다. **실서버는 아직 이 값을 읽지 않습니다** (엔진 담당에 요청).
 - 화면 → 엔진 메시지 `test.say {text}`를 추가했습니다. 대사 입력 모드에서 입력한 글자를 음성인식 결과 한 번으로 보고 추적하는 테스트용입니다. **실서버는 아직 받지 않습니다** (엔진 담당에 요청).
 - 화면 → 엔진 메시지 `subtitle.send {text, source}`를 추가했습니다 (`source`: `recognized` 인식 수정 / `manual` 직접 작성). 애드리브 임시 자막 송출용입니다. **수행계획서에서는 보조 화면에 송출 기능이 없고(R3) 애드리브 임시 자막은 이번 학기 범위 밖(Won't)이었으므로 팀 합의가 필요합니다.** 실서버와 송출 프로그램은 아직 받지 않습니다 (엔진 담당 · 2단계 송출 프로그램 연동에 요청). 모의 서버는 받은 내용을 로그로만 남깁니다.
+- 화면 → 엔진 메시지 `position.set {cue_id}`를 추가했습니다. **위치 맞추기**: 대본 목록에서 줄을 누르거나 목록 위 **◀ 이전 / 다음 ▶** 버튼으로 AI 추정 위치를 고칩니다. 송출이 아니라 엔진의 추적 위치만 옮기고, 엔진은 그 큐에서 추적 · 이탈 판단을 다시 시작합니다(이탈 중이었으면 그 큐를 복귀로 알림). 이전 / 다음은 대사 · 가사 줄끼리 움직입니다. 모의 서버는 대사 입력 모드에서만 흉내 냅니다.
+- `input.status`에 `audio_sec`(엔진 재생 위치, 초)를 추가했습니다. **녹음 같이 듣기**: 음성 파일 회차면 상단에 소리 버튼(🔊/🔇)과 음량 막대가 나오고, 엔진이 재생하는 녹음(`GET /session/audio`)을 같은 위치에 맞춰 틉니다(0.4초 넘게 어긋나면 맞춤). 시연 영상 · 성능 확인용이고, 여기서 소리를 꺼도 추적에는 영향이 없습니다. 브라우저가 자동 재생을 막으면 **소리 켜기** 버튼을 한 번 누릅니다.
 - 보조 화면에 대본 목록을 띄우려면 화면도 큐 목록이 필요합니다. 지금은 화면이 큐 CSV를 직접 읽습니다. 엔진이 큐 목록을 보내 줄지 정해야 합니다.
 
 ## 큐 CSV (임시)

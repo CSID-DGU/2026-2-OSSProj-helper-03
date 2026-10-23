@@ -1,5 +1,6 @@
 // ② 보조 화면 (공연 중, 보기 전용). 기준: 수행계획서 그림 4 보조 화면 와이어프레임.
 // 대본 큐 송출 기능은 두지 않는다 (요구사항 R3). 애드리브 임시 자막만 오퍼레이터가 확인해서 송출한다 (팀 합의 필요).
+// 위치 맞추기(대본 줄 클릭 · 이전/다음)는 송출이 아니라 엔진의 AI 추정 위치만 고친다.
 
 import { useMemo, useState } from 'react'
 import type { Cue } from '../cues'
@@ -9,6 +10,7 @@ import type { EngineState } from '../useEngine'
 import { useNow } from '../useNow'
 import { formatElapsed } from '../time'
 import { AdlibPanel, type SentSubtitle } from './AdlibPanel'
+import { AudioPlayer } from './AudioPlayer'
 import { DeviationCard, type HoldReason } from './DeviationCard'
 import { DeviationTimeline } from './DeviationTimeline'
 import { EdgeFlash } from './EdgeFlash'
@@ -33,10 +35,12 @@ interface Props {
   onSay: (text: string) => void
   /** 애드리브 임시 자막 송출 */
   onSendSubtitle: (text: string, source: SubtitleSource) => void
+  /** 위치 맞추기: AI 추정 위치를 이 큐로 */
+  onJump: (cueId: number) => void
 }
 
 export function AssistScreen(props: Props) {
-  const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle } = props
+  const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle, onJump } = props
   const now = useNow()
   const [sent, setSent] = useState<SentSubtitle[]>([])
   const cueById = useMemo(() => new Map(cues.map((c) => [c.id, c])), [cues])
@@ -84,6 +88,7 @@ export function AssistScreen(props: Props) {
           <span className="mode-label">{INPUT_LABEL[inputMode]}</span>
         </div>
         <div className="status">
+          {inputMode === 'file' && <AudioPlayer session={startedAt} engineSec={input?.audio_sec ?? null} />}
           <InputBadge hold={hold} level={input?.audio_level ?? null} />
           <span className={`badge ${song ? 'badge-song' : ''}`}>{song ? '노래 구간' : '대사 구간'}</span>
           {position && <span className="latency">지연 {(position.latency_ms / 1000).toFixed(1)}초</span>}
@@ -101,6 +106,7 @@ export function AssistScreen(props: Props) {
           threshold={threshold}
           returnId={returnId}
           paused={noInput}
+          onJump={onJump}
         />
 
         {/* 오른쪽: 위에서부터 알림 → 애드리브 임시 자막 → 휴대폰 미리보기 → 이탈 기록. 순서가 바뀌지 않게 고정 */}

@@ -11,3 +11,6 @@ export const STALE_MS = 5_000
 
 /** 대본 목록을 손으로 스크롤하면 이 시간 동안 현재 위치 따라가기를 멈춘다. */
 export const MANUAL_SCROLL_PAUSE_MS = 5_000
+
+/** 녹음 같이 듣기: 화면 소리가 엔진 재생 위치와 이만큼(초) 넘게 어긋나면 그 위치로 옮긴다. */
+export const AUDIO_SYNC_TOLERANCE_SEC = 0.4
