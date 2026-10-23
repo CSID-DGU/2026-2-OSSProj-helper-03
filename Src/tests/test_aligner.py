@@ -19,7 +19,7 @@ def test_short_text_is_skipped(sample_cues):
 
 
 def test_far_jump_needs_confirmation(sample_cues):
-    al = Aligner(sample_cues, strong=101)   # 긴 문장 즉시 이동은 끄고 확인 규칙만 본다
+    al = Aligner(sample_cues, strong=101, far=0)   # 긴 문장 즉시 이동 · 먼 이동 근거는 끄고 확인 규칙만 본다
     lines = dialogue(sample_cues)
     target = lines[8]
     first = al.update(target.text)
@@ -131,7 +131,7 @@ def lose(al):
 def test_lost_search_stays_in_scene_and_next_scene():
     cues = _scene_cues(True)
     assert cues[0].scene == "1-1" and cues[8].scene == "2-1"
-    al = Aligner(cues, ahead=1)
+    al = Aligner(cues, ahead=1, far=0)                 # 먼 이동 근거는 따로 시험
     lose(al)
     al.update("내일 아침에 다시 만나요")              # 2막 1장 (현재 장면 + 다음 장면 밖) → 못 감
     assert al.current.id == 2
@@ -147,7 +147,7 @@ def test_lost_search_window_without_scene_info():
     lose(al)
     al.update("내일 아침에 다시 만나요")              # 11번: 4큐 창 밖
     assert al.current.id == 2
-    al = Aligner(cues, ahead=1, lost_window=0, pace=0)   # 0 = 끝까지 (개선 전). 빠르기 확인은 따로 시험
+    al = Aligner(cues, ahead=1, lost_window=0, pace=0, far=0)   # 0 = 끝까지 (개선 전). 빠르기 · 먼 이동 확인은 따로 시험
     lose(al)
     al.update("내일 아침에 다시 만나요")
     al.update("내일 아침에 다시 만나요")
@@ -157,14 +157,14 @@ def test_lost_search_window_without_scene_info():
 def test_stale_candidate_does_not_confirm_a_far_jump(sample_cues):
     """한참 전에 한 번 나온 큰 이동 후보는 버린다 (예전에는 1분 뒤 엉뚱한 말 한 번으로 10큐 넘게 튐)."""
     lines = dialogue(sample_cues)
-    al = Aligner(sample_cues, strong=101, pace=0)
+    al = Aligner(sample_cues, strong=101, pace=0, far=0)
     al.update(lines[0].text, 3)
     assert al.update(lines[8].text, 6).status == "pending"
     for t in range(9, 33, 3):                          # 대본과 상관없는 말이 이어짐
         al.update("전혀 상관없는 이야기를 길게 합니다", t)
     step = al.update(lines[8].text, 33)                # 27초 뒤 다시: 새 후보로만 셈
     assert step.status == "pending" and al.current.id == lines[0].id
-    al = Aligner(sample_cues, strong=101, pace=0, pending_sec=0)   # 개선 전: 오래된 후보로 이동
+    al = Aligner(sample_cues, strong=101, pace=0, pending_sec=0, far=0)   # 개선 전: 오래된 후보로 이동
     al.update(lines[0].text, 3)
     al.update(lines[8].text, 6)
     for t in range(9, 33, 3):
@@ -177,18 +177,71 @@ def test_too_fast_jump_needs_one_more_confirmation(sample_cues):
     오래 뒤처졌다가 따라잡는 이동(지나친 대사를 말할 시간이 있었음)은 그대로."""
     lines = dialogue(sample_cues)
     target = lines[10]
-    al = Aligner(sample_cues)
+    al = Aligner(sample_cues, far=0)                   # 먼 이동 확인은 따로 시험
     al.update(lines[0].text, 3)
     assert al._too_fast(al.items.index(target))
     assert al.update(target.text, 4.5).status == "pending"        # 긴 문장 100점이어도 바로 안 감
     assert al.update(target.text, 6).status == "pending"          # 두 번으로는 부족
     assert al.update(target.text, 7.5).status == "move"
-    al = Aligner(sample_cues)
+    al = Aligner(sample_cues, far=0)
     al.update(lines[0].text, 3)
     for t in range(6, 120, 3):                         # 2분 가까이 못 따라감 (지나친 대사를 말할 시간 충분)
         al.update("", t)
     assert not al._too_fast(al.items.index(target))
     assert al.update(target.text, 120).status == "move"           # 긴 문장이 확실히 맞으면 바로
+
+
+def _chunks(*parts: str):
+    """겹친 조각처럼: 같은 말이 앞뒤 조각에 두 번씩 들어간다."""
+    out = []
+    for p in parts:
+        out += [p, p]
+    return out
+
+
+def test_one_line_adlib_matching_a_far_line_does_not_jump(sample_cues):
+    """애드리브 한마디가 20큐 뒤 짧은 대사(#127 "무슨 말인데요?")와 똑같아도 그리로 튀지 않는다.
+    배우가 대본으로 돌아오면(#109) 그대로 따라간다. (예전: 겹친 조각에 두 번 들어가 확인 두 번 → 20큐 건너뜀)"""
+    byid = {c.id: c for c in sample_cues}
+    al = Aligner(sample_cues, start_id=108)
+    t = 0.0
+    for text in _chunks(byid[127].text, byid[127].text, "그러니까 내 말은", byid[127].text):
+        t += 1.5
+        step = al.update(text, t)
+        assert al.current.id == 108, (text, step)
+    assert al.update(byid[109].text, t + 1.5).matched and al.current.id == 109
+    old = Aligner(sample_cues, start_id=108, far=0)                # 예전: 놓침 3번 뒤 확인 두 번으로 20큐를 건너뜀
+    for i, text in enumerate(_chunks(byid[127].text, byid[127].text, byid[127].text)):
+        old.update(text, 1.5 * (i + 1))
+    assert old.current.id == 127
+
+
+def test_real_far_skip_is_followed_once_the_actor_keeps_going(sample_cues):
+    """배우가 정말로 20큐를 건너뛰었으면 그 뒤 대사를 이어서 하므로, 두 줄째(#128)를 들으면 따라간다.
+    (말할 수 없는 빠르기로 건너뛴 것이라 확인은 세 번: 빠르기 확인은 그대로)"""
+    byid = {c.id: c for c in sample_cues}
+    al = Aligner(sample_cues, start_id=108)
+    t = 0.0
+    for text in _chunks(byid[127].text, byid[127].text):   # 15큐 탐색 범위 밖 → 놓침 → 장면 끝까지 찾음 → 대기
+        t += 1.5
+        al.update(text, t)
+        assert al.current.id == 108
+    al.update(byid[127].text + " " + byid[128].text, t + 1.5)
+    al.update(byid[128].text, t + 3.0)
+    assert al.current.id == 128
+
+
+def test_long_far_line_alone_is_enough():
+    """멀리 있는 긴 대사(약 16음절 넘게) 한 줄을 들으면 다음 줄을 기다리지 않는다 (확인 규칙은 그대로)."""
+    from engine.cue_loader import parse_cues
+    words = ["처음 인사를 드립니다", "오늘은 날씨가 맑네요", "점심은 무엇을 먹을까", "저녁에는 비가 온대요",
+             "우산을 챙겨야겠네요", "버스가 곧 도착합니다", "다음 역에서 내려요", "모두 수고하셨습니다",
+             "오늘 밤에는 바람이 아주 많이 불고 비도 내린다고 들었어요", "커피를 한 잔 더 주세요"]
+    rows = ["id,order,type,speaker,text"] + [f"{i},{i},dialogue,가,{w}" for i, w in enumerate(words, 1)]
+    cues = parse_cues("\n".join(rows) + "\n")
+    al = Aligner(cues, strong=101, pace=0)
+    assert al.update(words[8]).status == "pending"
+    assert al.update(words[8]).status == "move" and al.current.id == 9
 
 
 def test_parse_settings():
