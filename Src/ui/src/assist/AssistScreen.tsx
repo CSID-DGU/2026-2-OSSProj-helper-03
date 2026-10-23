@@ -8,6 +8,7 @@ import type { InputMode, SubtitleSource } from '../protocol'
 import { RETURN_HIGHLIGHT_MS, STALE_MS } from '../settings'
 import type { EngineState } from '../useEngine'
 import { useNow } from '../useNow'
+import { shortFollowers } from '../shortLines'
 import { formatElapsed } from '../time'
 import { AdlibPanel, type SentSubtitle } from './AdlibPanel'
 import { AudioPlayer } from './AudioPlayer'
@@ -71,6 +72,9 @@ export function AssistScreen(props: Props) {
   const lastSent = sent[sent.length - 1]
   const tempSubtitle = lastSent && lastSent.at >= cueSince ? lastSent.text : undefined
 
+  // 짧은 대사 묶어 보이기: 지금 줄 바로 뒤의 짧은 대사들
+  const followers = useMemo(() => shortFollowers(cues, position?.cue_id ?? null), [cues, position?.cue_id])
+
   const returnId =
     deviation?.return_cue_id != null && deviationAt !== null && now - deviationAt < RETURN_HIGHLIGHT_MS
       ? deviation.return_cue_id
@@ -106,6 +110,7 @@ export function AssistScreen(props: Props) {
           threshold={threshold}
           returnId={returnId}
           paused={noInput}
+          followerIds={followers.map((f) => f.id)}
           onJump={onJump}
         />
 
@@ -120,6 +125,7 @@ export function AssistScreen(props: Props) {
           />
           <PhonePreview
             cue={position ? cueById.get(position.cue_id) : undefined}
+            followers={followers}
             deviating={deviating}
             temp={tempSubtitle}
           />

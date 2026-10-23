@@ -883,3 +883,14 @@ button:disabled {
     font-size: 44px;
   }
 }
+
+/* 짧은 대사 묶어 보이기: 지금 줄과 함께 휴대폰 자막에 뜨는 짧은 대사 */
+.cue-follower {
+  border-color: rgba(124, 108, 240, 0.35);
+  border-style: dashed;
+}
+
+.phone-sub-next {
+  display: block;
+  margin-top: 6px;
+}

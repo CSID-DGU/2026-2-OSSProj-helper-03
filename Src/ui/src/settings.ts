@@ -14,3 +14,11 @@ export const MANUAL_SCROLL_PAUSE_MS = 5_000
 
 /** 녹음 같이 듣기: 화면 소리가 엔진 재생 위치와 이만큼(초) 넘게 어긋나면 그 위치로 옮긴다. */
 export const AUDIO_SYNC_TOLERANCE_SEC = 0.4
+
+/**
+ * 짧은 대사 묶어 보이기: 지금 줄 바로 뒤의 짧은 대사(이 음절 이하)는 휴대폰 자막에 함께 띄운다.
+ * 1초도 안 되는 짧은 대사는 AI 추정이 건너뛰기 쉬워서(실측 27%가 한 번도 안 뜸), 앞 줄과 같이 보여 주면 95%가 보인다.
+ */
+export const SHORT_LINE_SYLLABLES = 5
+/** 함께 띄우는 짧은 대사는 이 줄 수까지 */
+export const SHORT_LINE_MAX_GROUPED = 2

@@ -16,11 +16,13 @@ interface Props {
   returnId: number | null
   /** 음향 입력이 없으면 현재 줄 표시를 흐리게 */
   paused: boolean
+  /** 지금 줄과 함께 휴대폰 자막에 띄우는 짧은 대사 */
+  followerIds: number[]
   /** 위치 맞추기: 이 큐로 AI 추정 위치를 옮긴다 */
   onJump: (cueId: number) => void
 }
 
-export function ScriptList({ cues, currentId, confidence, threshold, returnId, paused, onJump }: Props) {
+export function ScriptList({ cues, currentId, confidence, threshold, returnId, paused, followerIds, onJump }: Props) {
   const listRef = useRef<HTMLOListElement>(null)
   const rowRefs = useRef(new Map<number, HTMLLIElement>())
   const [manualUntil, setManualUntil] = useState(0)
@@ -89,6 +91,7 @@ export function ScriptList({ cues, currentId, confidence, threshold, returnId, p
         {cues.map((cue) => {
           const isCurrent = cue.id === currentId
           const isReturn = cue.id === returnId
+          const isFollower = followerIds.includes(cue.id)
           const classes = [
             'cue',
             `cue-${cue.type}`,
@@ -96,6 +99,7 @@ export function ScriptList({ cues, currentId, confidence, threshold, returnId, p
             isCurrent && uncertain && 'cue-uncertain',
             isCurrent && paused && 'cue-paused',
             isReturn && 'cue-return',
+            isFollower && 'cue-follower',
           ]
             .filter(Boolean)
             .join(' ')
@@ -128,6 +132,7 @@ export function ScriptList({ cues, currentId, confidence, threshold, returnId, p
               </span>
               <span className="cue-tags">
                 {isReturn && <span className="cue-tag tag-return">복귀</span>}
+                {isFollower && <span className="cue-tag">함께 표시</span>}
                 {isCurrent && confidence !== null && (
                   <span className="cue-tag">
                     {uncertain ? '불확실' : 'AI 추정 위치'} · 신뢰도 {confidence.toFixed(2)}
