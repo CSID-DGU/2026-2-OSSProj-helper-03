@@ -120,13 +120,25 @@ export interface CueOnAir {
   sent_at: number
 }
 
-export type ServerMessage = PositionUpdate | DeviationAlert | InputStatus | CueOnAir
+/**
+ * (추가) 엔진 오류. 회차를 못 열었거나(키 없음 · 큐/녹음 파일 없음 · 마이크 오류) 음성인식이 계속 실패할 때.
+ * 화면 위에 띄워서 오퍼레이터가 원인을 바로 알게 한다.
+ */
+export interface EngineError {
+  type: 'engine.error'
+  message: string
+  /** session.start: 회차를 못 엶 / recognize: 음성인식이 연달아 실패하거나 끊김 */
+  during: 'session.start' | 'recognize'
+}
+
+export type ServerMessage = PositionUpdate | DeviationAlert | InputStatus | CueOnAir | EngineError
 
 const SERVER_TYPES = new Set<ServerMessage['type']>([
   'position.update',
   'deviation.alert',
   'input.status',
   'cue.onair',
+  'engine.error',
 ])
 
 /** 받은 문자열을 ServerMessage로 해석. 모르는 형식이면 null */

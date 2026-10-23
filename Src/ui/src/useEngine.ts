@@ -5,6 +5,7 @@ import {
   type CueOnAir,
   type DeviationAlert,
   type DeviationType,
+  type EngineError,
   type InputStatus,
   type PositionUpdate,
   type ServerMessage,
@@ -55,6 +56,8 @@ export interface EngineState {
   onAir: CueOnAir | null
   /** 마지막으로 메시지를 받은 시각 (epoch ms) */
   lastMessageAt: number | null
+  /** 가장 최근 엔진 오류와 받은 시각 */
+  error: (EngineError & { at: number }) | null
 }
 
 const initialState: EngineState = {
@@ -67,6 +70,7 @@ const initialState: EngineState = {
   input: null,
   onAir: null,
   lastMessageAt: null,
+  error: null,
 }
 
 type Action =
@@ -92,6 +96,8 @@ function reducer(state: EngineState, action: Action): EngineState {
           return { ...next, input: msg }
         case 'cue.onair':
           return { ...next, onAir: msg }
+        case 'engine.error':
+          return { ...next, error: { ...msg, at } }
       }
     }
   }

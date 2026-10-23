@@ -44,8 +44,11 @@ export function AssistScreen(props: Props) {
   const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle, onJump } = props
   const now = useNow()
   const [sent, setSent] = useState<SentSubtitle[]>([])
+  /** 닫은 엔진 오류 (받은 시각). 같은 오류는 다시 띄우지 않는다 */
+  const [dismissedErrorAt, setDismissedErrorAt] = useState<number | null>(null)
   const cueById = useMemo(() => new Map(cues.map((c) => [c.id, c])), [cues])
-  const { position, deviation, deviationAt, deviationLog, recognitionLog, input, connection, lastMessageAt } = engine
+  const { position, deviation, deviationAt, deviationLog, recognitionLog, input, connection, lastMessageAt, error } = engine
+  const shownError = error && error.at !== dismissedErrorAt ? error : null
 
   const stale = connection === 'open' && lastMessageAt !== null && now - lastMessageAt > STALE_MS
   const noInput = input !== null && input.audio_level === 0
@@ -101,6 +104,23 @@ export function AssistScreen(props: Props) {
           </button>
         </div>
       </header>
+
+      {shownError && (
+        <div className="engine-error" role="alert">
+          <span>
+            {shownError.during === 'session.start' ? '회차를 시작하지 못했습니다' : '음성인식 오류'} · {shownError.message}
+          </span>
+          {shownError.during === 'session.start' ? (
+            <button className="small" onClick={onEnd}>
+              시작 화면으로
+            </button>
+          ) : (
+            <button className="ghost small" onClick={() => setDismissedErrorAt(shownError.at)}>
+              닫기
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="assist-body">
         <ScriptList
