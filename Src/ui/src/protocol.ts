@@ -19,7 +19,7 @@ export interface SessionStart {
   show_id: string
   cue_file: string
   /**
-   * (추가) 소리 원천. 실서버는 아직 이 값을 읽지 않고 .env 의 HELPER_INPUT 을 쓴다 (엔진 담당에 요청).
+   * (추가) 소리 원천. 실서버 · 모의 서버 모두 읽는다. 없으면 실서버는 .env 의 HELPER_INPUT 을 쓴다.
    * 모의 서버는 읽는다.
    */
   input?: InputMode
@@ -40,7 +40,7 @@ export interface SettingsUpdate {
 
 /**
  * (추가) 테스트용 대사 입력. input 이 'text' 인 회차에서, 입력한 글자를 음성인식 결과 한 번으로 보고 추적한다.
- * 실서버는 아직 받지 않는다 (엔진 담당에 요청). 모의 서버는 받는다.
+ * 실서버는 실제 추적기 · 이탈 감지로, 모의 서버는 간단한 글자 유사도로 처리한다.
  */
 export interface TestSay {
   type: 'test.say'
@@ -53,7 +53,7 @@ export type SubtitleSource = 'recognized' | 'manual'
 /**
  * (추가) 애드리브 임시 자막 송출. 대본에 없는 말을 오퍼레이터가 확인·수정해서 내보낸다.
  * 수행계획서에서는 '애드리브 임시 자막'이 이번 학기 범위 밖(Won't)이고 보조 화면에 송출 기능이 없었으므로(R3),
- * 팀 합의가 필요하다. 실서버·송출 프로그램은 아직 받지 않는다 (엔진 담당 · 2단계 연동에 요청).
+ * 팀 합의가 필요하다. 실서버는 받아서 회차 기록 · 로그에만 남긴다 (실제 송출은 2단계 송출 프로그램 연동).
  */
 export interface SubtitleSend {
   type: 'subtitle.send'
