@@ -103,24 +103,23 @@ export function AssistScreen(props: Props) {
             회차 종료
           </button>
         </div>
+        {shownError && (
+          <div className="engine-error" role="alert">
+            <span>
+              {shownError.during === 'session.start' ? '회차를 시작하지 못했습니다' : '음성인식 오류'} · {shownError.message}
+            </span>
+            {shownError.during === 'session.start' ? (
+              <button className="small" onClick={onEnd}>
+                시작 화면으로
+              </button>
+            ) : (
+              <button className="ghost small" onClick={() => setDismissedErrorAt(shownError.at)}>
+                닫기
+              </button>
+            )}
+          </div>
+        )}
       </header>
-
-      {shownError && (
-        <div className="engine-error" role="alert">
-          <span>
-            {shownError.during === 'session.start' ? '회차를 시작하지 못했습니다' : '음성인식 오류'} · {shownError.message}
-          </span>
-          {shownError.during === 'session.start' ? (
-            <button className="small" onClick={onEnd}>
-              시작 화면으로
-            </button>
-          ) : (
-            <button className="ghost small" onClick={() => setDismissedErrorAt(shownError.at)}>
-              닫기
-            </button>
-          )}
-        </div>
-      )}
 
       <div className="assist-body">
         <ScriptList

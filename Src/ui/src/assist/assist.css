@@ -898,11 +898,12 @@ button:disabled {
 /* 엔진 오류 (회차를 못 엶 · 음성인식이 계속 실패) */
 .engine-error {
   display: flex;
+  flex-basis: 100%; /* 상단 바 안에서 한 줄을 다 쓴다 */
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  margin-bottom: var(--gap);
+  overflow-wrap: anywhere; /* 긴 파일 경로도 줄바꿈 */
   color: #ffe1e1;
   background: #5a1f24;
   border: 1px solid #a8434b;
