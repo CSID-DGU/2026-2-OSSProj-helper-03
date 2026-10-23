@@ -185,7 +185,7 @@ async def ws_endpoint(ws: WebSocket):
                     pipe = await loop.run_in_executor(None, start_session, msg, emit)
                 except Exception as ex:   # 키 없음 · 파일 없음 · 마이크 오류 등: 서버 로그와 화면에 알린다
                     log.error("회차 시작 실패: %s", ex)
-                    emit(engine_error(f"회차를 시작하지 못했습니다: {ex}", "session.start"))
+                    emit(engine_error(str(ex), "session.start"))   # 원인만. '회차를 못 엶'은 화면이 붙인다
                     pipe = None
             elif kind == "session.end":
                 if pipe:
