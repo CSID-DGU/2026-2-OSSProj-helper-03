@@ -243,8 +243,10 @@ def test_file_playback_reports_audio_position(sample_cues):
     msgs = []
     pipe = Pipeline(sample_cues, np.zeros(16000 * 30, dtype="float32"), FakeSTT([]), msgs.append, speed=10)
     pipe.start()
-    time.sleep(1.3)
+    deadline = time.time() + 2.5                       # 1초마다 오는 상태 메시지를 두 번 받을 때까지 (CI 가 느려도)
+    while time.time() < deadline and len([m for m in of(msgs, "input.status") if "audio_sec" in m]) < 2:
+        time.sleep(0.05)
     pipe.stop()
     pipe.join(timeout=3)
     sec = [m["audio_sec"] for m in of(msgs, "input.status") if "audio_sec" in m]
-    assert sec and 0 <= sec[0] < sec[-1] <= 30
+    assert len(sec) >= 2 and 0 <= sec[0] < sec[-1] <= 30
