@@ -30,7 +30,7 @@ from engine.aligner import Aligner  # noqa: E402
 from engine.cue_loader import load_cues  # noqa: E402
 from engine.deviation import BASELINE, DeviationDetector  # noqa: E402
 from engine.pipeline import implausible  # noqa: E402
-from eval.metrics import read_labels, read_records  # noqa: E402
+from eval.metrics import processing_order, read_labels, read_records  # noqa: E402
 
 
 def parse_kv(items: list[str]) -> dict:
@@ -46,7 +46,7 @@ def replay(cues, records, aligner_kw=None, detector_kw=None, song_hold=True):
     al = Aligner(cues, **(aligner_kw or {}))
     det = DeviationDetector(**(detector_kw or {}))
     alerts, states, prev_raw = [], [], ""
-    for r in sorted(records, key=lambda r: r["chunk_end"]):
+    for r in processing_order(records):   # 파이프라인과 같은 순서 (늦어서 버린 결과는 빼고)
         raw = r.get("text") or ""
         text = "" if implausible(raw, prev_raw, r["chunk_end"] - r["chunk_start"]) else raw
         prev_raw = raw

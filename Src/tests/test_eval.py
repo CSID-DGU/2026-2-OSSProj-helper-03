@@ -24,3 +24,16 @@ def test_sound_cue_counts_as_previous_tracked_cue(sample_cues):
     labels = [(0.0, 109), (3.0, 110)]                             # 3초부터 음향 큐 진행 중
     rep = evaluate([(0.0, 109)], labels, sample_cues, end_sec=6.0)
     assert rep.accuracy == 1.0                                   # 음향 큐 동안은 109 를 보여 주면 정답
+
+
+def test_processing_order_follows_the_pipeline():
+    """저장된 결과를 다시 돌릴 때 파이프라인과 같은 순서: 조각 순서, 늦게 와서 쓴 결과는 도착한 때, 버린 결과는 뺌."""
+    from eval.metrics import processing_order
+    recs = [{"chunk_end": 1.0, "proc_sec": 1.0},
+            {"chunk_end": 2.0, "proc_sec": 2.5, "late": True, "late_used": True},   # 4.5초에 도착
+            {"chunk_end": 3.0, "proc_sec": 1.0},
+            {"chunk_end": 4.0, "proc_sec": 1.0},
+            {"chunk_end": 4.5, "proc_sec": 9.0, "late": True}]                     # 늦어서 버림
+    assert [r["chunk_end"] for r in processing_order(recs)] == [1.0, 3.0, 2.0, 4.0]
+    seq = [{"chunk_end": 3.0, "proc_sec": 2.0}, {"chunk_end": 4.5, "proc_sec": 0.3}]  # 하나씩 보낸 기록은 조각 순서
+    assert [r["chunk_end"] for r in processing_order(seq)] == [3.0, 4.5]

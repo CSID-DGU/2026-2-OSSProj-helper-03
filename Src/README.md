@@ -50,6 +50,7 @@ uvicorn server.main:app --port 8000
 | `HELPER_MIC_DEVICE` | 마이크 장치 번호 또는 이름 일부. 비우면 기본 장치 (`python -m engine.audio_input --list`로 확인) |
 | `HELPER_STT` | `whisper`(로컬, 기본) / `google`(chirp_3 3초 조각) / `google_stream`(long 실시간) / `clova_stream` |
 | `HELPER_CHUNK_SEC` / `HELPER_HOP_SEC` | 음성인식에 보내는 조각 길이 / 간격. 간격을 짧게 하면 조각이 겹쳐 반응이 빨라지지만 CPU · API 사용량이 늘어남 |
+| `GOOGLE_STT_HEDGE` | 같은 인식 요청을 동시에 몇 번 보낼지 (기본 1). 2 면 먼저 온 답을 써서 인식이 느릴 때 빨라지지만 비용 2배. 구글 US 요청 한도(분당 약 300번)에 주의 |
 | `HELPER_STT_WORKERS` | 조각 인식 요청을 동시에 몇 개까지 보낼지. 비우면 엔진 기본값 (whisper 1 · google 3). 인식 한 번이 간격보다 오래 걸려도 (chirp_3 요청당 1~2초, p95 2.2초) 밀리지 않게 겹쳐 보냄 |
 | `HELPER_HINTS` | `1`이면 현재 큐 + 다음 3큐를 음성인식에 힌트로 줌 (1차 실험에서 정확도가 가장 크게 오른 방법) |
 | `HELPER_VAD` | `1`이면 조용하고 말소리도 없는 조각은 음성인식에 보내지 않음 (조각 방식 엔진만. API 비용 절약 · 무음에서 힌트를 지어내는 것 줄이기) |

@@ -27,7 +27,7 @@ sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 from engine.aligner import BASELINE, Aligner  # noqa: E402
 from engine.cue_loader import load_cues  # noqa: E402
 from engine.pipeline import implausible  # noqa: E402
-from eval.metrics import evaluate, read_labels, read_records  # noqa: E402
+from eval.metrics import evaluate, processing_order, read_labels, read_records  # noqa: E402
 
 
 def parse_args(argv=None):
@@ -61,9 +61,7 @@ def replay(cues, records, kw) -> list[tuple[float, int]]:
     """인식 글자를 시간 순서대로 추적기에 넣어 타임라인을 만든다 (파이프라인과 같은 걸러내기)."""
     al = Aligner(cues, **kw)
     timeline, prev_raw = [], ""
-    for r in sorted(records, key=lambda r: r["chunk_end"]):
-        if r.get("late"):     # 실시간 기록에서 늦어서 버린 결과
-            continue
+    for r in processing_order(records):   # 파이프라인과 같은 순서 (늦어서 버린 결과는 빼고)
         raw = r.get("text") or ""
         text = "" if implausible(raw, prev_raw, r["chunk_end"] - r["chunk_start"]) else raw
         prev_raw = raw
@@ -160,7 +158,8 @@ def show_realtime(stats, records, rep) -> dict:
         print(f"  요청 {stats['sent']}번 (동시 {stats['workers']}): 처리 평균 {sum(proc) / len(proc):.2f}s"
               f"  중앙 {pct(proc, .5):.2f}s  p95 {pct(proc, .95):.2f}s  최대 {max(proc):.2f}s"
               f"  보낸 소리 {sent_sec / 60:.1f}분")
-    print(f"  밀려서 안 보낸 조각 {stats.get('skipped', 0)}  늦어서 버린 결과 {stats.get('late', 0)}"
+    print(f"  밀려서 안 보낸 조각 {stats.get('skipped', 0)}  늦게 온 결과 {stats.get('late', 0)}"
+          f" (그중 버림 {stats.get('late_dropped', 0)})"
           f"  실패 {stats['failed']}")
     if shown:
         print(f"  조각 끝 → 화면 표시 지연 중앙 {pct(shown, .5) / 1000:.2f}s  p90 {pct(shown, .9) / 1000:.2f}s")
@@ -210,7 +209,7 @@ def main(argv=None):
             if args.save:
                 info = {"engine": args.engine, "hints": not args.no_hints, "chunk": args.chunk,
                         "hop": args.hop or args.chunk, "workers": stats["workers"], "speed": args.speed,
-                        "sent": stats["sent"], "skipped": stats.get("skipped", 0), "late": stats.get("late", 0),
+                        "sent": stats["sent"], "skipped": stats.get("skipped", 0), "late": stats.get("late", 0), "late_dropped": stats.get("late_dropped", 0),
                         "failed": stats["failed"], **summary, "timeline": timeline}
                 Path(args.save).with_suffix(".summary.json").write_text(
                     json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")

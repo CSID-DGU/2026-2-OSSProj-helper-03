@@ -148,5 +148,8 @@ class VADGate(STTEngine):
             return ""
         return self.stt.transcribe(audio, hints)
 
+    def request_info(self):
+        return self.stt.request_info()
+
     def stream(self, frames, hints_fn=None):
         return self.stt.stream(frames, hints_fn)

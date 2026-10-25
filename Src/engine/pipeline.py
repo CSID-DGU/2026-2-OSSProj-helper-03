@@ -29,6 +29,8 @@ MAX_SYLLABLES_PER_SEC = 10   # 이보다 빠르면 사람이 말한 게 아니�
                              # 3초에 28~32음절도 나와서 8 → 10 (지어낸 결과는 3초에 44~52음절)
 STREAM_TAIL = 12             # 스트리밍 결과에서 정렬기에 넣을 최근 글자 수 (공백 제외)
 FAIL_ALERT_AFTER = 3         # 음성인식 요청이 이만큼 연달아 실패하면 화면에 알림 (인터넷 끊김 · 키 만료 등)
+LATE_KEEP_SEC = 3.0          # 뒤 조각보다 늦게 온 결과도 이만큼 안쪽 소리면 쓴다 (조각 1초 간격에서 늦은 결과를
+                             # 버리지 않으면 정확도 +0~2.4점, 10/22 기록 재생)
 
 
 class TypedInput(STTEngine):
@@ -191,21 +193,23 @@ class Pipeline:
 
         - 대본 힌트는 요청을 보낼 때의 추적 위치로 만든다
         - 결과는 조각 순서대로 처리한다 (걸러내기 · 직전 글자 비교도 이 순서). 뒤 조각이 먼저 끝나면
-          아직 안 끝난 앞 조각은 늦은 결과로 버린다 → 느린 요청 하나가 화면을 붙잡지 않음
-          (조각이 겹치면 버린 조각의 소리는 앞뒤 조각에 들어 있다)
+          아직 안 끝난 앞 조각은 기다리지 않고 늦은 결과로 미뤘다가, 끝나는 대로 쓴다 → 느린 요청 하나가
+          화면을 붙잡지 않으면서 그 글자도 버리지 않음 (LATE_KEEP_SEC 보다 오래된 것만 버림)
         - 요청이 다 차서 밀리면 지난 조각은 보내지 않고 최신 소리로 (지연이 쌓이지 않게)
         workers=1 이면 예전처럼 한 번에 하나씩: 결과를 처리한 뒤 다음 조각을 보낸다.
         """
-        self.records: list[dict] = []           # 요청마다 chunk_start · chunk_end · text · proc_sec (+ error · late)
-        self.stats = {"skipped": 0, "late": 0}  # 밀려서 안 보낸 조각 수 · 늦어서 버린 결과 수
+        self.records: list[dict] = []   # 요청마다 chunk_start · chunk_end · text · proc_sec (+ error · late · late_used)
+        self.stats = {"skipped": 0, "late": 0, "late_dropped": 0}  # 밀려서 안 보낸 조각 · 늦게 온 결과 · 그중 버린 것
+        self.newest = 0.0               # 처리한 조각 끝 시각 중 가장 늦은 것
         pool = ThreadPoolExecutor(self.workers, thread_name_prefix="helper-stt")
         pending: deque[tuple[dict, Future]] = deque()   # 보냈고 아직 처리 안 한 조각 (보낸 순서)
-        busy: list[Future] = []                          # 진행 중인 요청 (버린 것 포함)
+        late: list[tuple[dict, Future]] = []             # 뒤 조각보다 늦게 끝나 미뤄 둔 조각
+        busy: list[Future] = []                          # 진행 중인 요청
         end = self.hop_sec if self.hop_sec < self.chunk_sec else self.chunk_sec
         try:
             while not self.stopped.is_set():
                 busy = [f for f in busy if not f.done()]   # 먼저 세고 처리 → 여기서 끝난 결과는 아래서 처리됨
-                self._collect(pending)                     # (workers=1 이면 힌트가 늘 직전 결과까지 반영)
+                self._collect(pending, late)               # (workers=1 이면 힌트가 늘 직전 결과까지 반영)
                 now = self.source.now_audio()
                 if now < end or len(busy) >= self.workers:
                     time.sleep(0.02)
@@ -226,14 +230,14 @@ class Pipeline:
                 pending.append((rec, fut))
                 busy.append(fut)
                 end += self.hop_sec
-            while pending and not self.stopped.is_set():   # 녹음 끝: 남은 결과까지 처리
-                self._collect(pending)
+            while (pending or late) and not self.stopped.is_set():   # 녹음 끝: 남은 결과까지 처리
+                self._collect(pending, late)
                 time.sleep(0.02)
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
             failed = sum("error" in r for r in self.records)
-            log.info("인식 끝: 요청 %d, 밀려서 건너뜀 %d, 늦어서 버림 %d, 실패 %d", len(self.records),
-                     self.stats["skipped"], self.stats["late"], failed)
+            log.info("인식 끝: 요청 %d, 밀려서 건너뜀 %d, 늦게 옴 %d (그중 버림 %d), 실패 %d", len(self.records),
+                     self.stats["skipped"], self.stats["late"], self.stats["late_dropped"], failed)
             self._finish(sent=len(self.records), **self.stats, failed=failed)
 
     def _recognize(self, seg: np.ndarray, hints: list[str] | None, rec: dict) -> str:
@@ -252,24 +256,38 @@ class Pipeline:
         else:
             with self.lock:
                 self.fail_streak = 0
-        rec.update(text=text, proc_sec=round(time.perf_counter() - t0, 3))
+        rec.update(text=text, proc_sec=round(time.perf_counter() - t0, 3),
+                   **getattr(self.stt, "request_info", dict)())
         return text
 
-    def _collect(self, pending: deque):
-        """끝난 인식 결과를 조각 순서대로 처리. 뒤 조각이 먼저 끝났으면 앞의 안 끝난 조각은 버린다."""
+    def _collect(self, pending: deque, late: list):
+        """끝난 인식 결과를 조각 순서대로 처리. 뒤 조각이 먼저 끝났으면 앞의 안 끝난 조각은 늦은 결과로 미뤄 두고,
+        끝나면 그때 쓴다 (가장 최근 조각보다 LATE_KEEP_SEC 넘게 앞선 소리면 버림)."""
         last = max((i for i, (_, f) in enumerate(pending) if f.done()), default=-1)
         for _ in range(last + 1):
             rec, fut = pending.popleft()
-            if not fut.done():         # 늦은 결과: 나중에 끝나도 쓰지 않음
+            if fut.done():
+                self._use(rec, fut.result())
+            else:
                 rec["late"] = True
-                self.stats["late"] += 1   # (작업 스레드가 아직 rec 을 고칠 수 있어 정해진 칸만 기록)
-                self.record("stt", **{k: rec[k] for k in ("chunk_start", "chunk_end", "hints", "late")})
-                continue
-            raw = fut.result()
-            self.record("stt", **rec)
-            text = "" if implausible(raw, self.prev_text, self.chunk_sec) else raw
-            self.prev_text = raw
-            self._handle(text, rec["chunk_end"], raw)
+                self.stats["late"] += 1
+                late.append((rec, fut))
+        for item in [x for x in late if x[1].done()]:
+            late.remove(item)
+            rec, fut = item
+            if self.newest - rec["chunk_end"] <= LATE_KEEP_SEC:
+                rec["late_used"] = True
+                self._use(rec, fut.result())
+            else:
+                self.stats["late_dropped"] += 1
+                self.record("stt", **rec)      # 버린 결과도 회차 기록에는 남긴다
+
+    def _use(self, rec: dict, raw: str):
+        self.record("stt", **rec)
+        text = "" if implausible(raw, self.prev_text, self.chunk_sec) else raw
+        self.prev_text = raw
+        self.newest = max(self.newest, rec["chunk_end"])
+        self._handle(text, rec["chunk_end"], raw)
 
     # ── 스트리밍 ────────────────────────────────────────────
     def _stream_loop(self):
