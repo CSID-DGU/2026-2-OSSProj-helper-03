@@ -26,11 +26,14 @@
 - 짧은 대사(1~3음절, 글자가 적어 맞춰 볼 수 없음) 넘기기도 해 봤다: 방금 맞은 뒤 짧은 말이 들리고 다음 큐가
   짧은 대사면 한 칸. 짧은 대사가 몰린 구간의 대사 정확도는 그대로였고, 애드리브 구간에서 앞서 가서 뺐다
 5차 (먼 대사로 튀지 않게):
-- 앞으로 far 큐 넘게 가려면 최근 몇 초 동안 그 근처 대본을 far_jamo 자모(약 16음절) 넘게 '한 줄씩 들어야' 한다 (_heard_near).
-  "무슨 말인데요?" 같은 흔한 한마디 애드리브가 20큐 뒤 대사와 같으면, 겹친 조각(3초를 1.5초마다)에 같은 말이
+- "무슨 말인데요?" 같은 흔한 한마디 애드리브가 20큐 뒤 대사와 같으면, 겹친 조각(3초를 1.5초마다)에 같은 말이
   두 번 들어가 확인 두 번이 채워져서 20큐를 건너뛰었다. 한번 멀리 튀면 뒤로는 back 큐만 찾으므로 스스로 못 돌아온다.
-  진짜로 건너뛴 배우는 그 뒤 대사를 이어서 하므로 한 줄(긴 대사) 또는 두 줄을 들으면 따라간다.
-  저장된 공연 · 이탈 녹음에는 4큐 넘는 이동이 없어서 평소 추적은 그대로 (먼 이동만 신중하게)
+- 공연은 대본 순서대로 가므로, 앞으로 far 큐 넘게 가는 이동은 '따라잡기'만 한다 (_caught_up):
+  인식 글자가 없던 동안(인터넷 · 마이크 끊김, 인식 실패) 배우가 지나칠 대사를 다 말할 수 있었고(pace),
+  최근 몇 초 동안 그 근처 대본을 far_jamo 자모(약 16음절) 넘게 '한 줄씩 들었을' 때 (_heard_near).
+  말소리를 계속 듣고 있었는데 멀리 있는 대사와 비슷한 말이 나오면, 아무리 비슷해도 애드리브 · 우연으로 보고
+  그 자리에 머문다 (이탈 알림이 뜨고, 배우가 정말 크게 건너뛰었으면 오퍼레이터가 대본 줄을 눌러 맞춤)
+- 저장된 공연 · 이탈 녹음에는 4큐 넘는 이동이 없어서 평소 추적은 그대로
 """
 import inspect
 import re
@@ -104,8 +107,9 @@ class Aligner:
         self.prefer_near = int(prefer_near)
         self.pending_sec = pending_sec  # 큰 이동 후보는 이 시간(초) 안에 다시 나와야 인정 (0 = 끝없이 기다림)
         self.pace = pace                # 사람이 말할 수 있는 가장 빠른 속도 (음절/초). 0 = 안 봄
-        self.far = int(far)             # 앞으로 이만큼 넘게 가는 이동은 그 근처 대본을 다 들은 근거가 있어야 (0 = 안 봄)
-        self.far_jamo = far_jamo        # 그 근거: 후보 근처에서 다 들은 대사들의 자모 수 합
+        self.far = int(far)             # 앞으로 이만큼 넘게 가는 이동은 따라잡기일 때만 (0 = 안 봄)
+        self.far_jamo = far_jamo        # 따라잡기 근거: 후보 근처에서 들은 대사들의 자모 수 합
+        self.quiet = 0.0              # 마지막으로 위치를 확인한 뒤 인식 글자가 없던 시간 (초)
         self.clock = 0.0              # 마지막 인식 글자의 소리 끝 시각
         self.at: float | None = None  # 마지막으로 위치를 확인한 소리 시각
         self.stale = 0                # 마지막으로 위치를 확인한 뒤 지난 인식 횟수 (빈 결과 포함)
@@ -129,7 +133,7 @@ class Aligner:
         idx = next((i for i, c in enumerate(self.items) if c.id == cue_id), None)
         if idx is None:
             return False
-        self.pos, self.miss, self.pending, self.stale, self.at = idx, 0, [], 0, self.clock
+        self.pos, self.miss, self.pending, self.stale, self.at, self.quiet = idx, 0, [], 0, self.clock, 0.0
         return True
 
     def _lost_ranges(self, scene_limit: int, window: int) -> list[int]:
@@ -170,12 +174,13 @@ class Aligner:
     def update(self, text: str, end: float | None = None) -> Step:
         """인식 글자 하나를 반영. end = 그 글자 소리의 끝 시각 (초). 안 주면 한 번에 1초씩 흐른 것으로 본다."""
         end = self.clock + 1.0 if end is None else end
-        self.clock = end
+        dt, self.clock = max(0.0, end - self.clock), end
         if self.pending_sec:   # 오래된 큰 이동 후보는 버린다 (한참 뒤 엉뚱한 말 한 번으로 튀지 않게)
             self.pending = [p for p in self.pending if end - p[1] <= self.pending_sec]
         t = to_jamo(text)
         if len(t) < self.min_jamo:
             self.stale += 1
+            self.quiet += dt
             return Step("skip", self.current)
         self.stale += 1
         self.recent.append(t)
@@ -206,19 +211,33 @@ class Aligner:
         if 0 <= d <= self.small_step:   # 자연스러운 진행
             return self._move(idx, score, cand)
         # 큰 이동(뒤로 가거나 많이 건너뜀): 대기 후보와 같은 곳이거나 그 바로 뒤로 이어지면 인정.
-        # 말할 수 없는 빠르기로 건너뛰면 한 번 더. 멀리 앞으로 가려면 그 근처 대본을 이어서 말한 근거도
+        # 말할 수 없는 빠르기로 건너뛰면 한 번 더. 멀리 앞으로는 따라잡기일 때만
         self.pending = [p for p in self.pending if -1 <= idx - p[0] <= self.small_step + 1] + [(idx, end)]
-        if self.far and d > self.far and self._heard_near(idx) < self.far_jamo:
+        if self.far and d > self.far and not self._caught_up(idx):
             return Step("pending", self.current, score, cand)
-        if (d > 0 and not fast and score >= self.strong and len(t) >= self.strong_jamo)                 or len(self.pending) >= self.confirm + fast:   # 긴 문장이 확실히 맞음 / 확인됨
+        if (d > 0 and not fast and score >= self.strong and len(t) >= self.strong_jamo) \
+                or len(self.pending) >= self.confirm + fast:   # 긴 문장이 확실히 맞음 / 확인됨
             return self._move(idx, score, cand)
         return Step("pending", self.current, score, cand)
+
+    def _caught_up(self, idx: int) -> bool:
+        """멀리 앞(idx)으로 가도 되나: 지나칠 대사 중 못 들은 것을 배우가 인식 글자가 없던 동안 다 말할 수 있었고,
+        그 근처 대본을 들었다."""
+        texts = self._texts(-1.0 if self.at is None else self.at)   # 마지막으로 위치를 확인한 뒤 들은 말
+        unheard = sum(self.syl[i + 1] - self.syl[i] for i in range(self.pos + 1, idx)
+                      if _covered(self.items[i].jamo, texts) < HEARD_PART)
+        need = unheard / self.pace if self.pace else 0.0
+        return self.quiet >= need and self._heard_near(idx) >= self.far_jamo
+
+    def _texts(self, since: float) -> list[str]:
+        """since 초 뒤에 끝난 인식 자모 (같은 글자는 한 번)."""
+        return list(dict.fromkeys(t for e, t in self.said if e > since))
 
     def _heard_near(self, idx: int) -> int:
         """큰 이동 후보 근처(바로 앞 대사들 ~ 바로 다음)에서 최근 pending_sec 초 인식 글자로 들은 대사들의 자모 수 합.
         한 줄이 조각(3초) 경계에 걸려 나뉘어 들려도(그 조각은 다른 곳에 맞거나 안 맞음) 맞은 부분을 합쳐 보고,
         같은 한마디를 여러 번 들어도 한 줄로만 센다."""
-        texts = list(dict.fromkeys(t for e, t in self.said if not self.pending_sec or self.clock - e <= self.pending_sec))
+        texts = self._texts(self.clock - self.pending_sec if self.pending_sec else -1.0)
         lo = max(self.pos + self.small_step + 1, idx - self.small_step)
         return sum(len(c.jamo) for c in self.items[lo:idx + 2]
                    if len(c.jamo) >= self.min_jamo and _covered(c.jamo, texts) >= HEARD_PART)
@@ -226,7 +245,7 @@ class Aligner:
     def _move(self, idx: int, score: float, cand: Cue) -> Step:
         prev = self.pos
         again = idx < prev and idx in self.heard
-        self.pos, self.pending, self.stale, self.at = idx, [], 0, self.clock
+        self.pos, self.pending, self.stale, self.at, self.quiet = idx, [], 0, self.clock, 0.0
         skipped = []
         got = "".join(self.recent)
         for i in range(prev + 1, idx):        # 지나친 큐: 최근 인식 글자에 비슷한 부분이 있으면 들은 것으로

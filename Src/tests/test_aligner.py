@@ -216,32 +216,48 @@ def test_one_line_adlib_matching_a_far_line_does_not_jump(sample_cues):
     assert old.current.id == 127
 
 
-def test_real_far_skip_is_followed_once_the_actor_keeps_going(sample_cues):
-    """배우가 정말로 20큐를 건너뛰었으면 그 뒤 대사를 이어서 하므로, 두 줄째(#128)를 들으면 따라간다.
-    (말할 수 없는 빠르기로 건너뛴 것이라 확인은 세 번: 빠르기 확인은 그대로)"""
+def test_far_lines_heard_right_away_wait_for_the_operator(sample_cues):
+    """말소리를 계속 듣고 있었는데 20큐 뒤 대사(#127 → #128)가 이어서 나오면, 애드리브인지 정말 건너뛴 것인지 모르므로
+    따라가지 않고 그 자리에 머문다 (이탈 알림이 뜨고, 정말 건너뛰었으면 오퍼레이터가 위치를 맞춤)."""
     byid = {c.id: c for c in sample_cues}
     al = Aligner(sample_cues, start_id=108)
     t = 0.0
-    for text in _chunks(byid[127].text, byid[127].text):   # 15큐 탐색 범위 밖 → 놓침 → 장면 끝까지 찾음 → 대기
+    for text in _chunks(byid[127].text, byid[127].text + " " + byid[128].text, byid[128].text):
         t += 1.5
         al.update(text, t)
         assert al.current.id == 108
-    al.update(byid[127].text + " " + byid[128].text, t + 1.5)
-    al.update(byid[128].text, t + 3.0)
-    assert al.current.id == 128
+    assert al.jump_to(128) and al.update(byid[128].text, t + 1.5).matched and al.current.id == 128
+    old = Aligner(sample_cues, start_id=108, far=0)                # 예전: 그대로 따라감
+    for i, text in enumerate(_chunks(byid[127].text, byid[127].text + " " + byid[128].text, byid[128].text)):
+        old.update(text, 1.5 * (i + 1))
+    assert old.current.id == 128
 
 
-def test_long_far_line_alone_is_enough():
-    """멀리 있는 긴 대사(약 16음절 넘게) 한 줄을 들으면 다음 줄을 기다리지 않는다 (확인 규칙은 그대로)."""
+def _long_line_cues():
     from engine.cue_loader import parse_cues
     words = ["처음 인사를 드립니다", "오늘은 날씨가 맑네요", "점심은 무엇을 먹을까", "저녁에는 비가 온대요",
              "우산을 챙겨야겠네요", "버스가 곧 도착합니다", "다음 역에서 내려요", "모두 수고하셨습니다",
              "오늘 밤에는 바람이 아주 많이 불고 비도 내린다고 들었어요", "커피를 한 잔 더 주세요"]
     rows = ["id,order,type,speaker,text"] + [f"{i},{i},dialogue,가,{w}" for i, w in enumerate(words, 1)]
-    cues = parse_cues("\n".join(rows) + "\n")
-    al = Aligner(cues, strong=101, pace=0)
-    assert al.update(words[8]).status == "pending"
-    assert al.update(words[8]).status == "move" and al.current.id == 9
+    return words, parse_cues("\n".join(rows) + "\n")
+
+
+def test_catches_up_after_recognition_gap():
+    """인식 글자가 한동안 없었으면(인터넷 · 마이크 끊김) 배우는 그사이 대본을 이어 갔으므로, 멀리 있는 대사를
+    충분히(약 16음절 넘게) 들으면 따라잡는다. 끊김 없이 바로 같은 말이 나오면 머문다."""
+    words, cues = _long_line_cues()
+    al = Aligner(cues)
+    al.update(words[0], 1.5)
+    for t in (3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 12.0):       # 10초 넘게 인식 글자 없음 (그동안 2~8번 대사)
+        al.update("", t)
+    al.update(words[8], 13.5)
+    al.update(words[8], 15.0)
+    assert al.current.id == 9
+    al = Aligner(cues)
+    al.update(words[0], 1.5)
+    for t in (3.0, 4.5, 6.0):
+        al.update(words[8], t)
+    assert al.current.id == 1
 
 
 def test_parse_settings():
