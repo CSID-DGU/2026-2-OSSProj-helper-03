@@ -233,6 +233,26 @@ def test_far_lines_heard_right_away_wait_for_the_operator(sample_cues):
     assert old.current.id == 128
 
 
+def test_far_skip_is_followed_after_three_lines(sample_cues):
+    """먼 곳의 서로 다른 대사를 세 줄 넘게 이어서 들으면 배우가 정말 거기서 대본을 이어 가는 것이므로 따라간다
+    (노래 · 인식 끊김으로 뒤처졌다 따라잡는 경우). 한두 줄로는 머문다."""
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    start = lines[1]
+    far = [c for c in lines if c.order > start.order + 6][:4]
+    al = Aligner(sample_cues, start_id=start.id)
+    t = 0.0
+    for c in far[:2]:
+        for _ in range(2):
+            t += 1.5
+            al.update(c.text, t)
+    assert al.current.id == start.id
+    for c in far[2:]:
+        for _ in range(2):
+            t += 1.5
+            al.update(c.text, t)
+    assert al.current.id in (far[2].id, far[3].id)
+
+
 def _long_line_cues():
     from engine.cue_loader import parse_cues
     words = ["처음 인사를 드립니다", "오늘은 날씨가 맑네요", "점심은 무엇을 먹을까", "저녁에는 비가 온대요",

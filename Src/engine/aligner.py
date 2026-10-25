@@ -28,11 +28,17 @@
 5차 (먼 대사로 튀지 않게):
 - "무슨 말인데요?" 같은 흔한 한마디 애드리브가 20큐 뒤 대사와 같으면, 겹친 조각(3초를 1.5초마다)에 같은 말이
   두 번 들어가 확인 두 번이 채워져서 20큐를 건너뛰었다. 한번 멀리 튀면 뒤로는 back 큐만 찾으므로 스스로 못 돌아온다.
-- 공연은 대본 순서대로 가므로, 앞으로 far 큐 넘게 가는 이동은 '따라잡기'만 한다 (_caught_up):
-  인식 글자가 없던 동안(인터넷 · 마이크 끊김, 인식 실패) 배우가 지나칠 대사를 다 말할 수 있었고(pace),
-  최근 몇 초 동안 그 근처 대본을 far_jamo 자모(약 16음절) 넘게 '한 줄씩 들었을' 때 (_heard_near).
-  말소리를 계속 듣고 있었는데 멀리 있는 대사와 비슷한 말이 나오면, 아무리 비슷해도 애드리브 · 우연으로 보고
+- 공연은 대본 순서대로 가므로, 앞으로 far 큐 넘게 가는 이동은 '따라잡기'만 한다 (_caught_up).
+  최근 몇 초 동안 그 근처 대본을 far_jamo 자모(약 16음절) 넘게 '한 줄씩 들었고' (_heard_near), 그중
+  ① 서로 다른 대사를 far_lines 줄 넘게 들었거나 (배우가 거기서 대본을 이어 가고 있음. 노래 · 인식 끊김으로
+     뒤처졌다가 따라잡는 경우. 애드리브 한마디는 한 줄과만 맞는다), 또는
+  ② 지나칠 대사 중 못 들은 것을, 최근 quiet_sec 초 동안 인식 글자가 없던 시간(인터넷 · 마이크 끊김, 인식 실패)에
+     배우가 다 말할 수 있었을 때 (pace). 이때는 근처 대본을 far_jamo 의 quiet_part(절반)만 들어도 됨
+  말소리를 계속 듣고 있었는데 멀리 있는 대사 한두 줄과 비슷한 말이 나오면, 아무리 비슷해도 애드리브 · 우연으로 보고
   그 자리에 머문다 (이탈 알림이 뜨고, 배우가 정말 크게 건너뛰었으면 오퍼레이터가 대본 줄을 눌러 맞춤)
+- ② 만으로 했더니 실시간 측정에서 구글 한도 초과로 13초 끊긴 뒤 노래 구간(가사는 들려도 잘 안 맞음)에서
+  #18~#28 을 순서대로 들으면서도 못 따라가 공연 녹음 정확도가 62 → 23% 였다 (끊긴 시간이 헛이동 한 번에 지워진 것도).
+  ① 을 넣고 끊긴 시간을 최근 30초로 세니 59%, ② 의 근거를 절반으로 낮추니 61.5% (애드리브로 튀는 비율은 그대로)
 - 저장된 공연 · 이탈 녹음에는 4큐 넘는 이동이 없어서 평소 추적은 그대로
 """
 import inspect
@@ -82,7 +88,7 @@ class Aligner:
                  min_jamo=6, accept=65.0, back=3, ahead=15, small_step=4, confirm=2, lost_after=3,
                  strong=85.0, strong_jamo=10, anchor="end", widen=0, near_first=1,
                  scene_limit=1, lost_window=30, recent=3, heard_score=60.0, prefer_near=1,
-                 pending_sec=9.0, pace=8.0, far=4, far_jamo=40):
+                 pending_sec=9.0, pace=8.0, far=4, far_jamo=40, far_lines=2, quiet_sec=30.0, quiet_part=0.5):
         self.items = [c for c in cues if c.type in track_types and c.jamo]
         if not self.items:
             raise ValueError("추적할 큐(대사·가사)가 없습니다.")
@@ -109,7 +115,10 @@ class Aligner:
         self.pace = pace                # 사람이 말할 수 있는 가장 빠른 속도 (음절/초). 0 = 안 봄
         self.far = int(far)             # 앞으로 이만큼 넘게 가는 이동은 따라잡기일 때만 (0 = 안 봄)
         self.far_jamo = far_jamo        # 따라잡기 근거: 후보 근처에서 들은 대사들의 자모 수 합
-        self.quiet = 0.0              # 마지막으로 위치를 확인한 뒤 인식 글자가 없던 시간 (초)
+        self.far_lines = int(far_lines)  # 후보 근처에서 서로 다른 대사를 이만큼 넘게 들었으면 따라잡기 (0 = 안 봄)
+        self.quiet_sec = quiet_sec      # 인식 글자가 없던 시간을 최근 이만큼(초)만 센다
+        self.quiet_part = quiet_part    # 끊긴 시간으로 따라잡을 때는 far_jamo 의 이만큼만 들으면 됨
+        self.gaps: deque[tuple[float, float]] = deque(maxlen=64)   # 인식 글자가 없던 조각 (소리 끝 시각, 길이)
         self.clock = 0.0              # 마지막 인식 글자의 소리 끝 시각
         self.at: float | None = None  # 마지막으로 위치를 확인한 소리 시각
         self.stale = 0                # 마지막으로 위치를 확인한 뒤 지난 인식 횟수 (빈 결과 포함)
@@ -133,7 +142,8 @@ class Aligner:
         idx = next((i for i, c in enumerate(self.items) if c.id == cue_id), None)
         if idx is None:
             return False
-        self.pos, self.miss, self.pending, self.stale, self.at, self.quiet = idx, 0, [], 0, self.clock, 0.0
+        self.pos, self.miss, self.pending, self.stale, self.at = idx, 0, [], 0, self.clock
+        self.gaps.clear()             # 오퍼레이터가 맞췄으므로 그 전 끊김으로 따라잡지 않음
         return True
 
     def _lost_ranges(self, scene_limit: int, window: int) -> list[int]:
@@ -180,7 +190,7 @@ class Aligner:
         t = to_jamo(text)
         if len(t) < self.min_jamo:
             self.stale += 1
-            self.quiet += dt
+            self.gaps.append((end, dt))
             return Step("skip", self.current)
         self.stale += 1
         self.recent.append(t)
@@ -223,29 +233,41 @@ class Aligner:
     def _caught_up(self, idx: int) -> bool:
         """멀리 앞(idx)으로 가도 되나: 지나칠 대사 중 못 들은 것을 배우가 인식 글자가 없던 동안 다 말할 수 있었고,
         그 근처 대본을 들었다."""
+        jamo, lines = self._heard_near(idx)
+        if jamo >= self.far_jamo and self.far_lines and lines > self.far_lines:
+            return True
+        if jamo < self.far_jamo * self.quiet_part:
+            return False
         texts = self._texts(-1.0 if self.at is None else self.at)   # 마지막으로 위치를 확인한 뒤 들은 말
         unheard = sum(self.syl[i + 1] - self.syl[i] for i in range(self.pos + 1, idx)
                       if _covered(self.items[i].jamo, texts) < HEARD_PART)
         need = unheard / self.pace if self.pace else 0.0
-        return self.quiet >= need and self._heard_near(idx) >= self.far_jamo
+        return self.quiet >= need
+
+    @property
+    def quiet(self) -> float:
+        """최근 quiet_sec 초 동안 인식 글자가 없던 시간 (초)."""
+        return sum(dt for e, dt in self.gaps if self.clock - e < self.quiet_sec)
 
     def _texts(self, since: float) -> list[str]:
         """since 초 뒤에 끝난 인식 자모 (같은 글자는 한 번)."""
         return list(dict.fromkeys(t for e, t in self.said if e > since))
 
-    def _heard_near(self, idx: int) -> int:
-        """큰 이동 후보 근처(바로 앞 대사들 ~ 바로 다음)에서 최근 pending_sec 초 인식 글자로 들은 대사들의 자모 수 합.
+    def _heard_near(self, idx: int) -> tuple[int, int]:
+        """큰 이동 후보 근처(바로 앞 대사들 ~ 바로 다음)에서 최근 pending_sec 초 인식 글자로 들은 대사들의 (자모 수 합, 줄 수).
         한 줄이 조각(3초) 경계에 걸려 나뉘어 들려도(그 조각은 다른 곳에 맞거나 안 맞음) 맞은 부분을 합쳐 보고,
         같은 한마디를 여러 번 들어도 한 줄로만 센다."""
         texts = self._texts(self.clock - self.pending_sec if self.pending_sec else -1.0)
         lo = max(self.pos + self.small_step + 1, idx - self.small_step)
-        return sum(len(c.jamo) for c in self.items[lo:idx + 2]
-                   if len(c.jamo) >= self.min_jamo and _covered(c.jamo, texts) >= HEARD_PART)
+        heard = [c for c in self.items[lo:idx + 2] if len(c.jamo) >= self.min_jamo and _covered(c.jamo, texts) >= HEARD_PART]
+        return sum(len(c.jamo) for c in heard), len(heard)
 
     def _move(self, idx: int, score: float, cand: Cue) -> Step:
         prev = self.pos
         again = idx < prev and idx in self.heard
-        self.pos, self.pending, self.stale, self.at, self.quiet = idx, [], 0, self.clock, 0.0
+        self.pos, self.pending, self.stale, self.at = idx, [], 0, self.clock
+        if idx - prev > self.far:     # 따라잡았으면 그 끊김은 다 썼음
+            self.gaps.clear()
         skipped = []
         got = "".join(self.recent)
         for i in range(prev + 1, idx):        # 지나친 큐: 최근 인식 글자에 비슷한 부분이 있으면 들은 것으로
