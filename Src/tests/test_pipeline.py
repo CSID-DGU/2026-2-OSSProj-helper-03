@@ -183,3 +183,99 @@ def test_aligner_settings_and_sound_clock(sample_cues, silence):
     pipe.stop()
     pipe.join(timeout=5)
     assert pipe.aligner.clock == max(r["chunk_end"] for r in pipe.records)
+
+
+def test_typed_input_follows_script_and_flags_adlib(sample_cues):
+    """대사 입력 테스트: 친 글자를 인식 결과로 보고 실제 추적기 · 이탈 감지로 따라간다 (소리 · 음성인식 없이)."""
+    from engine.audio_input import TextSource
+    from engine.pipeline import TypedInput
+
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    msgs = []
+    pipe = Pipeline(sample_cues, TextSource(), TypedInput(), msgs.append, deviate_after=0.2)
+    pipe.start()
+    for c in lines[:3]:
+        pipe.say(c.text)
+    assert [m["cue_id"] for m in of(msgs, "position.update")] == [c.id for c in lines[:3]]
+    pipe.say("아 오늘 비 진짜 많이 오네 여러분 우산 챙기셨어요")       # 대본에 없는 말 두 번
+    time.sleep(0.3)
+    pipe.say("버스 정류장까지 뛰어오느라 숨이 다 차네요 정말로")
+    alerts = of(msgs, "deviation.alert")
+    assert alerts and alerts[0]["deviation_type"] == "adlib" and alerts[0]["return_cue_id"] is None
+    pipe.say(lines[3].text)                                          # 대본으로 돌아옴 → 복귀 알림
+    assert of(msgs, "deviation.alert")[-1]["return_cue_id"] == lines[3].id
+    time.sleep(1.2)
+    assert of(msgs, "input.status")[-1]["audio_level"] > 0           # 0 이면 화면이 '입력 없음'
+    pipe.stop()
+    pipe.join(timeout=3)
+
+
+def test_say_only_in_typed_input_session(sample_cues, silence):
+    import pytest
+    pipe = Pipeline(sample_cues, silence, FakeSTT([]), print)
+    with pytest.raises(ValueError):
+        pipe.say("안녕하세요")
+
+
+def test_operator_jump_moves_position_and_closes_deviation(sample_cues):
+    """위치 맞추기: 추적 위치를 옮기고, 이탈 중이었으면 그 큐를 복귀로 알린다 (화면 알림 카드가 닫히게)."""
+    from engine.audio_input import TextSource
+    from engine.pipeline import TypedInput
+
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    msgs = []
+    pipe = Pipeline(sample_cues, TextSource(), TypedInput(), msgs.append, deviate_after=0.2)
+    pipe.say(lines[0].text)
+    pipe.say("아 오늘 비 진짜 많이 오네 여러분 우산 챙기셨어요")
+    time.sleep(0.3)
+    pipe.say("버스 정류장까지 뛰어오느라 숨이 다 차네요 정말로")
+    assert of(msgs, "deviation.alert")[-1]["return_cue_id"] is None          # 이탈 중
+    assert pipe.jump_to(lines[5].id)
+    assert of(msgs, "position.update")[-1] == {"type": "position.update", "cue_id": lines[5].id,
+                                                "confidence": 1.0, "latency_ms": 0, "transcript": ""}
+    assert of(msgs, "deviation.alert")[-1]["return_cue_id"] == lines[5].id    # 맞춘 곳으로 복귀
+    assert not pipe.detector.deviating
+    assert not pipe.jump_to(99999)                                             # 모르는 큐
+
+
+def test_file_playback_reports_audio_position(sample_cues):
+    """녹음 재생 회차는 input.status 에 재생 위치(audio_sec)를 담는다 (화면이 같은 녹음을 맞춰 틀 때)."""
+    msgs = []
+    pipe = Pipeline(sample_cues, np.zeros(16000 * 30, dtype="float32"), FakeSTT([]), msgs.append, speed=10)
+    pipe.start()
+    deadline = time.time() + 2.5                       # 1초마다 오는 상태 메시지를 두 번 받을 때까지 (CI 가 느려도)
+    while time.time() < deadline and len([m for m in of(msgs, "input.status") if "audio_sec" in m]) < 2:
+        time.sleep(0.05)
+    pipe.stop()
+    pipe.join(timeout=3)
+    sec = [m["audio_sec"] for m in of(msgs, "input.status") if "audio_sec" in m]
+    assert len(sec) >= 2 and 0 <= sec[0] < sec[-1] <= 30
+
+
+def test_repeated_recognition_failures_are_reported_once(sample_cues, silence):
+    """음성인식이 연달아 실패하면(인터넷 끊김 · 키 만료) 화면에 한 번 알린다. 성공하면 다시 센다."""
+    from engine.pipeline import FAIL_ALERT_AFTER
+
+    class Flaky(STTEngine):
+        key = label = "flaky"
+        mode = "chunk"
+
+        def __init__(self):
+            self.calls = 0
+
+        def transcribe(self, audio, hints=None):
+            self.calls += 1
+            if self.calls <= 5 or self.calls == 7:       # 다섯 번 실패, 한 번 성공, 다시 한 번 실패
+                raise ConnectionError("network down")
+            return ""
+
+    msgs = []
+    pipe = Pipeline(sample_cues, silence, Flaky(), msgs.append, speed=30)
+    pipe.start()
+    pipe.source.done.wait(timeout=10)
+    time.sleep(0.3)
+    pipe.stop()
+    pipe.join(timeout=5)
+    errors = of(msgs, "engine.error")
+    assert len(errors) == 1 and errors[0]["during"] == "recognize"
+    assert f"{FAIL_ALERT_AFTER}번" in errors[0]["message"] and "network down" in errors[0]["message"]
