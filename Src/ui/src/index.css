@@ -131,3 +131,13 @@ button:disabled {
 .conn-closed {
   color: var(--danger);
 }
+
+/* 글자만 있는 작은 버튼 (시작 패널의 '샘플 대본으로') */
+button.link {
+  padding: 0 0 0 10px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}

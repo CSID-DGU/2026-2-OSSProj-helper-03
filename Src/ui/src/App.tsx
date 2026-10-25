@@ -44,6 +44,7 @@ export default function App() {
       onEnd={end}
       onSay={(text) => send({ type: 'test.say', text })}
       onSendSubtitle={(text, source) => send({ type: 'subtitle.send', text, source })}
+      onJump={(cueId) => send({ type: 'position.set', cue_id: cueId })}
     />
   )
 }

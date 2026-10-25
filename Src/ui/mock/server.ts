@@ -82,6 +82,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 interface MockSession {
   stop(): void
   say?(text: string): void
+  jump?(cueId: number): void
 }
 
 class Session implements MockSession {
@@ -302,6 +303,18 @@ class TextSession implements MockSession {
     this.send({ type: 'position.update', cue_id: cue.id, confidence: round2(hit.score), latency_ms: latency, transcript: raw })
     this.heartbeat()
   }
+
+  /** 위치 맞추기: 그 큐로 옮기고 이탈 중이었으면 복귀로 알린다 (실제 엔진과 같게) */
+  jump(cueId: number) {
+    const index = this.spoken.findIndex((c) => c.id === cueId)
+    if (index < 0) return
+    this.cur = index
+    if (this.deviation) {
+      this.send({ type: 'deviation.alert', deviation_type: this.deviation.type, since: this.deviation.since, return_cue_id: cueId })
+      this.deviation = null
+    }
+    this.send({ type: 'position.update', cue_id: cueId, confidence: 1, latency_ms: 0, transcript: '' })
+  }
 }
 
 // ── 서버 ─────────────────────────────────────────────────
@@ -347,6 +360,10 @@ wss.on('connection', (ws) => {
       case 'subtitle.send':
         // 실제로는 송출 프로그램으로 가야 함 (아직 연동 없음). 모의 서버는 기록만
         console.log(`[mock] 임시 자막 송출 (${msg.source}): ${msg.text}`)
+        break
+      case 'position.set':
+        if (session?.jump) session.jump(msg.cue_id)
+        else console.log('[mock] 위치 맞추기는 대사 입력 모드에서만 흉내냄:', msg.cue_id)
         break
       case 'test.say':
         if (session?.say) session.say(msg.text)

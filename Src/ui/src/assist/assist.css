@@ -192,6 +192,37 @@ button.small {
   border-radius: 6px;
 }
 
+/* 줄을 누르면 위치 맞추기 */
+.cue {
+  cursor: pointer;
+}
+
+.cue:hover:not(.cue-current) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.script-nav {
+  display: flex;
+  gap: 6px;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 녹음 같이 듣기 (음성 파일 회차) */
+.audio-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audio-ctl input[type='range'] {
+  width: 90px;
+  accent-color: var(--accent, #7c6cf0);
+}
+
 .cue-id {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -851,4 +882,30 @@ button.small {
   .card-cue {
     font-size: 44px;
   }
+}
+
+/* 짧은 대사 묶어 보이기: 지금 줄과 함께 휴대폰 자막에 뜨는 짧은 대사 */
+.cue-follower {
+  border-color: rgba(124, 108, 240, 0.35);
+  border-style: dashed;
+}
+
+.phone-sub-next {
+  display: block;
+  margin-top: 6px;
+}
+
+/* 엔진 오류 (회차를 못 엶 · 음성인식이 계속 실패) */
+.engine-error {
+  display: flex;
+  flex-basis: 100%; /* 상단 바 안에서 한 줄을 다 쓴다 */
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  overflow-wrap: anywhere; /* 긴 파일 경로도 줄바꿈 */
+  color: #ffe1e1;
+  background: #5a1f24;
+  border: 1px solid #a8434b;
+  border-radius: var(--radius);
 }

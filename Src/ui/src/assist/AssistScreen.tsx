@@ -1,5 +1,6 @@
 // ② 보조 화면 (공연 중, 보기 전용). 기준: 수행계획서 그림 4 보조 화면 와이어프레임.
 // 대본 큐 송출 기능은 두지 않는다 (요구사항 R3). 애드리브 임시 자막만 오퍼레이터가 확인해서 송출한다 (팀 합의 필요).
+// 위치 맞추기(대본 줄 클릭 · 이전/다음)는 송출이 아니라 엔진의 AI 추정 위치만 고친다.
 
 import { useMemo, useState } from 'react'
 import type { Cue } from '../cues'
@@ -7,8 +8,10 @@ import type { InputMode, SubtitleSource } from '../protocol'
 import { RETURN_HIGHLIGHT_MS, STALE_MS } from '../settings'
 import type { EngineState } from '../useEngine'
 import { useNow } from '../useNow'
+import { shortFollowers } from '../shortLines'
 import { formatElapsed } from '../time'
 import { AdlibPanel, type SentSubtitle } from './AdlibPanel'
+import { AudioPlayer } from './AudioPlayer'
 import { DeviationCard, type HoldReason } from './DeviationCard'
 import { DeviationTimeline } from './DeviationTimeline'
 import { EdgeFlash } from './EdgeFlash'
@@ -33,14 +36,19 @@ interface Props {
   onSay: (text: string) => void
   /** 애드리브 임시 자막 송출 */
   onSendSubtitle: (text: string, source: SubtitleSource) => void
+  /** 위치 맞추기: AI 추정 위치를 이 큐로 */
+  onJump: (cueId: number) => void
 }
 
 export function AssistScreen(props: Props) {
-  const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle } = props
+  const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle, onJump } = props
   const now = useNow()
   const [sent, setSent] = useState<SentSubtitle[]>([])
+  /** 닫은 엔진 오류 (받은 시각). 같은 오류는 다시 띄우지 않는다 */
+  const [dismissedErrorAt, setDismissedErrorAt] = useState<number | null>(null)
   const cueById = useMemo(() => new Map(cues.map((c) => [c.id, c])), [cues])
-  const { position, deviation, deviationAt, deviationLog, recognitionLog, input, connection, lastMessageAt } = engine
+  const { position, deviation, deviationAt, deviationLog, recognitionLog, input, connection, lastMessageAt, error } = engine
+  const shownError = error && error.at !== dismissedErrorAt ? error : null
 
   const stale = connection === 'open' && lastMessageAt !== null && now - lastMessageAt > STALE_MS
   const noInput = input !== null && input.audio_level === 0
@@ -67,6 +75,9 @@ export function AssistScreen(props: Props) {
   const lastSent = sent[sent.length - 1]
   const tempSubtitle = lastSent && lastSent.at >= cueSince ? lastSent.text : undefined
 
+  // 짧은 대사 묶어 보이기: 지금 줄 바로 뒤의 짧은 대사들
+  const followers = useMemo(() => shortFollowers(cues, position?.cue_id ?? null), [cues, position?.cue_id])
+
   const returnId =
     deviation?.return_cue_id != null && deviationAt !== null && now - deviationAt < RETURN_HIGHLIGHT_MS
       ? deviation.return_cue_id
@@ -84,6 +95,7 @@ export function AssistScreen(props: Props) {
           <span className="mode-label">{INPUT_LABEL[inputMode]}</span>
         </div>
         <div className="status">
+          {inputMode === 'file' && <AudioPlayer session={startedAt} engineSec={input?.audio_sec ?? null} />}
           <InputBadge hold={hold} level={input?.audio_level ?? null} />
           <span className={`badge ${song ? 'badge-song' : ''}`}>{song ? '노래 구간' : '대사 구간'}</span>
           {position && <span className="latency">지연 {(position.latency_ms / 1000).toFixed(1)}초</span>}
@@ -91,6 +103,22 @@ export function AssistScreen(props: Props) {
             회차 종료
           </button>
         </div>
+        {shownError && (
+          <div className="engine-error" role="alert">
+            <span>
+              {shownError.during === 'session.start' ? '회차를 시작하지 못했습니다' : '음성인식 오류'} · {shownError.message}
+            </span>
+            {shownError.during === 'session.start' ? (
+              <button className="small" onClick={onEnd}>
+                시작 화면으로
+              </button>
+            ) : (
+              <button className="ghost small" onClick={() => setDismissedErrorAt(shownError.at)}>
+                닫기
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       <div className="assist-body">
@@ -101,6 +129,8 @@ export function AssistScreen(props: Props) {
           threshold={threshold}
           returnId={returnId}
           paused={noInput}
+          followerIds={followers.map((f) => f.id)}
+          onJump={onJump}
         />
 
         {/* 오른쪽: 위에서부터 알림 → 애드리브 임시 자막 → 휴대폰 미리보기 → 이탈 기록. 순서가 바뀌지 않게 고정 */}
@@ -114,6 +144,7 @@ export function AssistScreen(props: Props) {
           />
           <PhonePreview
             cue={position ? cueById.get(position.cue_id) : undefined}
+            followers={followers}
             deviating={deviating}
             temp={tempSubtitle}
           />
