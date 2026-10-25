@@ -287,3 +287,19 @@ def test_parse_settings():
     import pytest
     with pytest.raises(ValueError):
         parse_settings("ahaed=10")
+
+
+def test_line_end_with_extra_words_stays_on_the_line():
+    """줄 끝을 말할 때 인식 글자에 대본에 없는 글자가 섞여도("따라" → "따라서", 끝에 애드리브 첫마디) 다음 줄로 미리 넘어가지 않는다."""
+    from engine.cue_loader import parse_cues
+    lines = ["안녕하세요.", "저희는 공연 자막을 돕는 팀입니다.", "우선은 이 왼쪽에 자막을 따라 자막을 띄우는 것 까지 했습니다.",
+             "다시 대본으로 돌아오면 이렇게 복귀 지점을 표시해 줍니다."]
+    rows = ["id,order,type,speaker,text"] + [f"{i},{i},dialogue,가,{w}" for i, w in enumerate(lines, 1)]
+    cues = parse_cues("\n".join(rows) + "\n")
+    for said in ("자막을 따라서 자막을 띄우는 것까지 했습니다.", "자막을 띄우는 것까지 했습니다. 중간에 애들"):
+        al = Aligner(cues, start_id=3)
+        al.update(said)
+        assert al.current.id == 3, said
+    old = Aligner(cues, start_id=3, anchor="end")      # 예전: 맞은 구간 끝이 다음 줄 첫 글자로 넘쳐 미리 넘어감
+    old.update("자막을 따라서 자막을 띄우는 것까지 했습니다.")
+    assert old.current.id == 4

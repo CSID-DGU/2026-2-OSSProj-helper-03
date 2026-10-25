@@ -40,6 +40,12 @@
   #18~#28 을 순서대로 들으면서도 못 따라가 공연 녹음 정확도가 62 → 23% 였다 (끊긴 시간이 헛이동 한 번에 지워진 것도).
   ① 을 넣고 끊긴 시간을 최근 30초로 세니 59%, ② 의 근거를 절반으로 낮추니 61.5% (애드리브로 튀는 비율은 그대로)
 - 저장된 공연 · 이탈 녹음에는 4큐 넘는 이동이 없어서 평소 추적은 그대로
+6차 (줄 끝에서 다음 줄로 미리 넘어가지 않게):
+- 현재 위치를 '맞은 구간의 끝'이 아니라 '구간 안에서 실제로 같은(3자모 넘게 이어진) 마지막 글자'로 본다 (anchor="matched").
+  partial_ratio 의 구간은 인식 글자 길이만큼이라, 인식 글자에 대본에 없는 글자가 섞이면("따라" → "따라서", 줄 끝 뒤 애드리브 첫마디)
+  구간이 다음 줄 첫 글자까지 넘쳐 줄을 다 말한 순간 다음 줄로 넘어갔다. 그 뒤 애드리브가 오면 말하지 않은 다음 줄이 계속 보였다.
+  마이크 발표 시험 4번 모두 애드리브 동안 제자리. 저장 기록 5벌 정확도 −0.1 ~ −1.1점 (미리 넘어간 것이 우연히 ±1큐에 맞던 몫),
+  도달 지연 중앙값 · 이탈 감지는 그대로. HELPER_ALIGN=anchor=end 면 예전과 같음
 """
 import inspect
 import re
@@ -49,7 +55,7 @@ from dataclasses import dataclass
 from itertools import accumulate
 
 from rapidfuzz import fuzz
-from rapidfuzz.distance import Indel
+from rapidfuzz.distance import Indel, Levenshtein
 
 from .cue_loader import TRACK_TYPES, Cue, to_jamo
 
@@ -86,7 +92,7 @@ class Step:
 class Aligner:
     def __init__(self, cues: list[Cue], track_types=TRACK_TYPES, start_id: int | None = None,
                  min_jamo=6, accept=65.0, back=3, ahead=15, small_step=4, confirm=2, lost_after=3,
-                 strong=85.0, strong_jamo=10, anchor="end", widen=0, near_first=1,
+                 strong=85.0, strong_jamo=10, anchor="matched", widen=0, near_first=1,
                  scene_limit=1, lost_window=30, recent=3, heard_score=60.0, prefer_near=1,
                  pending_sec=9.0, pace=8.0, far=4, far_jamo=40, far_lines=2, quiet_sec=30.0, quiet_part=0.5):
         self.items = [c for c in cues if c.type in track_types and c.jamo]
@@ -103,7 +109,7 @@ class Aligner:
         self.back, self.ahead, self.small_step = back, ahead, small_step
         self.confirm, self.lost_after = confirm, lost_after
         self.strong, self.strong_jamo = strong, strong_jamo
-        self.anchor = anchor          # 인식 글자가 맞은 구간의 어디를 현재 위치로 볼지: mid(가운데) / end(끝)
+        self.anchor = anchor          # 인식 글자가 맞은 구간의 어디를 현재 위치로 볼지: mid(가운데) / end(끝) / matched(실제로 같은 마지막 글자)
         self.widen = int(widen)       # 안 맞는 결과가 이어질 때마다 앞쪽 탐색 범위를 이만큼씩 넓힘
         self.near_first = int(near_first)  # 놓친 상태에서 먼저 가까운 범위를 찾고, 없을 때만 끝까지
         self.lost_hi = self._lost_ranges(int(scene_limit), int(lost_window))
@@ -168,10 +174,16 @@ class Aligner:
         a = self.starts[lo]
         b = self.starts[hi] if hi < len(self.items) else len(self.text)
         al = fuzz.partial_ratio_alignment(t, self.text[a:b])
-        if self.anchor == "end":   # 맞은 구간의 끝 = 배우가 방금 말한 곳 (한 조각에 큐가 여러 개일 때 덜 늦음)
-            at = a + max(al.dest_start, al.dest_end - 1)
-        else:
+        if self.anchor == "mid":
             at = a + (al.dest_start + al.dest_end) // 2
+        else:   # 맞은 구간의 끝 = 배우가 방금 말한 곳 (한 조각에 큐가 여러 개일 때 덜 늦음)
+            end = al.dest_end
+            if self.anchor == "matched":   # 구간 안에서 실제로 같은 마지막 글자까지만
+                ops = [op for op in Levenshtein.opcodes(t, self.text[a + al.dest_start:a + al.dest_end])
+                       if op.tag == "equal" and op.dest_end - op.dest_start >= 3]   # 우연히 같은 낱자는 빼고
+                if ops:
+                    end = al.dest_start + ops[-1].dest_end
+            at = a + max(al.dest_start, end - 1)
         return bisect_right(self.starts, at) - 1, al.score
 
     def _too_fast(self, idx: int) -> bool:
