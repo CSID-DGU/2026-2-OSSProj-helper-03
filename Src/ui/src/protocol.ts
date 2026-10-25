@@ -8,6 +8,9 @@ export type DeviationType = 'skip' | 'repeat' | 'adlib'
 /** 입력 구간: 대사 · 노래 */
 export type Segment = 'dialogue' | 'song'
 
+/** 소리 원천: 녹음 파일 재생 · 마이크 · 대사 입력(테스트용, 입력한 글자를 인식 결과로 씀) */
+export type InputMode = 'file' | 'mic' | 'text'
+
 // ── 화면 → 엔진 ──────────────────────────────────────────
 
 /** 회차 시작 */
@@ -15,6 +18,11 @@ export interface SessionStart {
   type: 'session.start'
   show_id: string
   cue_file: string
+  /**
+   * (추가) 소리 원천. 실서버는 아직 이 값을 읽지 않고 .env 의 HELPER_INPUT 을 쓴다 (엔진 담당에 요청).
+   * 모의 서버는 읽는다.
+   */
+  input?: InputMode
 }
 
 /** 회차 종료 */
@@ -30,7 +38,30 @@ export interface SettingsUpdate {
   alert_threshold: number
 }
 
-export type ClientMessage = SessionStart | SessionEnd | SettingsUpdate
+/**
+ * (추가) 테스트용 대사 입력. input 이 'text' 인 회차에서, 입력한 글자를 음성인식 결과 한 번으로 보고 추적한다.
+ * 실서버는 아직 받지 않는다 (엔진 담당에 요청). 모의 서버는 받는다.
+ */
+export interface TestSay {
+  type: 'test.say'
+  text: string
+}
+
+/** 임시 자막의 출처: 인식된 말을 고친 것 · 오퍼레이터가 직접 쓴 것 */
+export type SubtitleSource = 'recognized' | 'manual'
+
+/**
+ * (추가) 애드리브 임시 자막 송출. 대본에 없는 말을 오퍼레이터가 확인·수정해서 내보낸다.
+ * 수행계획서에서는 '애드리브 임시 자막'이 이번 학기 범위 밖(Won't)이고 보조 화면에 송출 기능이 없었으므로(R3),
+ * 팀 합의가 필요하다. 실서버·송출 프로그램은 아직 받지 않는다 (엔진 담당 · 2단계 연동에 요청).
+ */
+export interface SubtitleSend {
+  type: 'subtitle.send'
+  text: string
+  source: SubtitleSource
+}
+
+export type ClientMessage = SessionStart | SessionEnd | SettingsUpdate | TestSay | SubtitleSend
 
 // ── 엔진 → 화면 ──────────────────────────────────────────
 

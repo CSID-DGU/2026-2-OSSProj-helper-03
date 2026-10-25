@@ -25,6 +25,20 @@ export interface DeviationLogEntry {
   returnedAt: number | null
 }
 
+/** 인식 결과 한 번: AI가 고른 큐와 실제로 들린 글자. 'AI 추정 / 실제 대사' 기록에 쓴다. */
+export interface RecognitionEntry {
+  /** 받은 시각 (epoch ms) */
+  at: number
+  /** 발화 시각 추정 (받은 시각 - 처리 지연) */
+  heardAt: number
+  cueId: number
+  confidence: number
+  transcript: string
+}
+
+/** 화면에 남겨 둘 인식 결과 수 (오래된 것부터 버림) */
+const RECOGNITION_LOG_MAX = 300
+
 export interface EngineState {
   connection: Connection
   position: PositionUpdate | null
@@ -34,6 +48,8 @@ export interface EngineState {
   deviationAt: number | null
   /** 이번 회차의 이탈 기록. 오래된 것부터 */
   deviationLog: DeviationLogEntry[]
+  /** 이번 회차의 인식 결과 기록. 오래된 것부터 */
+  recognitionLog: RecognitionEntry[]
   input: InputStatus | null
   /** (2단계) 송출 프로그램이 마지막으로 송출한 큐 */
   onAir: CueOnAir | null
@@ -47,6 +63,7 @@ const initialState: EngineState = {
   deviation: null,
   deviationAt: null,
   deviationLog: [],
+  recognitionLog: [],
   input: null,
   onAir: null,
   lastMessageAt: null,
@@ -68,7 +85,7 @@ function reducer(state: EngineState, action: Action): EngineState {
       const next = { ...state, lastMessageAt: at }
       switch (msg.type) {
         case 'position.update':
-          return { ...next, position: msg }
+          return { ...next, position: msg, recognitionLog: logRecognition(state.recognitionLog, msg, at) }
         case 'deviation.alert':
           return { ...next, deviation: msg, deviationAt: at, deviationLog: logDeviation(state.deviationLog, msg, at) }
         case 'input.status':
@@ -78,6 +95,22 @@ function reducer(state: EngineState, action: Action): EngineState {
       }
     }
   }
+}
+
+/** 인식 글자가 있는 위치 갱신만 남긴다. 직전과 같은 큐·같은 글자면 건너뛴다. */
+function logRecognition(log: RecognitionEntry[], msg: PositionUpdate, at: number): RecognitionEntry[] {
+  const transcript = msg.transcript?.trim()
+  if (!transcript) return log
+  const last = log[log.length - 1]
+  if (last && last.cueId === msg.cue_id && last.transcript === transcript) return log
+  const entry: RecognitionEntry = {
+    at,
+    heardAt: at - msg.latency_ms,
+    cueId: msg.cue_id,
+    confidence: msg.confidence,
+    transcript,
+  }
+  return [...log, entry].slice(-RECOGNITION_LOG_MAX)
 }
 
 /** 시작 알림이면 새 기록을 더하고, 복귀 알림이면 같은 since의 기록을 채운다 */

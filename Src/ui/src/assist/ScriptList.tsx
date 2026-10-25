@@ -13,7 +13,7 @@ interface Props {
   threshold: number
   /** 크게 보여 주는 중인 복귀 큐 */
   returnId: number | null
-  /** 노래 구간이거나 음향 입력이 없으면 현재 줄 표시를 흐리게 */
+  /** 음향 입력이 없으면 현재 줄 표시를 흐리게 */
   paused: boolean
 }
 
