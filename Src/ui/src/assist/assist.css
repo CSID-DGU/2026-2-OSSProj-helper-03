@@ -654,6 +654,102 @@ button:disabled {
   border-radius: 6px;
 }
 
+/* 자막 송출: AI 추천 큐 + 송출 버튼 (오퍼레이터가 확인하고 누름) */
+
+.send {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--accent);
+}
+
+.send-deviating {
+  border-color: #4a4e5c;
+}
+
+.send-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.send-head h2 {
+  margin: 0;
+}
+
+.send-done {
+  padding: 1px 8px;
+  font-size: 12px;
+  color: #b8f0d5;
+  background: #1d4a37;
+  border-radius: 4px;
+}
+
+.send-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.send-cue {
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.send-id {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #c9c3ff;
+}
+
+.send-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.send-follower {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.send-deviating .send-id,
+.send-deviating .send-text {
+  opacity: 0.6;
+}
+
+button.send-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 96px;
+  padding: 10px 16px;
+  font-size: 18px;
+  font-weight: 700;
+  background: var(--accent);
+}
+
+.send-key {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.tag-sent {
+  padding: 1px 8px;
+  color: #b8f0d5;
+  background: #1d4a37;
+  border-radius: 4px;
+}
+
 /* 애드리브 임시 자막 */
 
 .adlib {
@@ -846,7 +942,7 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  /* 한 줄로 쌓을 때 순서: 알림 → 애드리브 임시 자막 → 대본 목록 → 휴대폰 미리보기 → 이탈 기록 */
+  /* 한 줄로 쌓을 때 순서: 알림 → 자막 송출 → 애드리브 임시 자막 → 대본 목록 → 휴대폰 미리보기 → 이탈 기록 */
   .side {
     display: contents;
   }
@@ -855,20 +951,24 @@ button:disabled {
     order: 1;
   }
 
-  .assist-body > .side > .adlib {
+  .assist-body > .side > .send {
     order: 2;
   }
 
-  .assist-body > .script {
+  .assist-body > .side > .adlib {
     order: 3;
   }
 
-  .assist-body > .side > .phone-wrap {
+  .assist-body > .script {
     order: 4;
   }
 
-  .assist-body > .side > .timeline {
+  .assist-body > .side > .phone-wrap {
     order: 5;
+  }
+
+  .assist-body > .side > .timeline {
+    order: 6;
   }
 
   .script {

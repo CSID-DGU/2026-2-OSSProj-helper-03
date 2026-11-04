@@ -18,11 +18,13 @@ interface Props {
   paused: boolean
   /** 지금 줄과 함께 휴대폰 자막에 띄우는 짧은 대사 */
   followerIds: number[]
+  /** 마지막으로 송출한 대본 큐 (함께 띄운 짧은 대사 포함) */
+  sentIds: number[]
   /** 위치 맞추기: 이 큐로 AI 추정 위치를 옮긴다 */
   onJump: (cueId: number) => void
 }
 
-export function ScriptList({ cues, currentId, confidence, threshold, returnId, paused, followerIds, onJump }: Props) {
+export function ScriptList({ cues, currentId, confidence, threshold, returnId, paused, followerIds, sentIds, onJump }: Props) {
   const listRef = useRef<HTMLOListElement>(null)
   const rowRefs = useRef(new Map<number, HTMLLIElement>())
   const [manualUntil, setManualUntil] = useState(0)
@@ -92,6 +94,7 @@ export function ScriptList({ cues, currentId, confidence, threshold, returnId, p
           const isCurrent = cue.id === currentId
           const isReturn = cue.id === returnId
           const isFollower = followerIds.includes(cue.id)
+          const isSent = sentIds.includes(cue.id)
           const classes = [
             'cue',
             `cue-${cue.type}`,
@@ -132,6 +135,7 @@ export function ScriptList({ cues, currentId, confidence, threshold, returnId, p
               </span>
               <span className="cue-tags">
                 {isReturn && <span className="cue-tag tag-return">복귀</span>}
+                {isSent && <span className="cue-tag tag-sent">송출됨</span>}
                 {isFollower && <span className="cue-tag">함께 표시</span>}
                 {isCurrent && confidence !== null && (
                   <span className="cue-tag">
