@@ -23,6 +23,7 @@ Helper 팀의 발표 자료, 보고서, 회의록을 모아 두는 폴더입니�
 |---|---|---|
 | 2_1 | 중간보고서 | [2_1_OSSProj_03_Helper_중간보고서.pdf](2_1_OSSProj_03_Helper_중간보고서.pdf) |
 | 2_2 | 중간발표자료 | [2_2_OSSProj_03_Helper_중간발표자료.pptx](2_2_OSSProj_03_Helper_중간발표자료.pptx) |
+| 2_3 | 회의록 (7\~12차) | [2_3_OSSProj_03_Helper_회의록.pdf](2_3_OSSProj_03_Helper_회의록.pdf) |
 
 ### 최종 발표 (2026.12.10)
 
