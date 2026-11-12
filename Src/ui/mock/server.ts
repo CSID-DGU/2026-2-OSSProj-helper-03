@@ -357,6 +357,10 @@ wss.on('connection', (ws) => {
       case 'settings.update':
         // 모의 서버는 기록만 한다. 실제 알림 보류는 엔진(⑤ 이탈 감지)이 처리.
         break
+      case 'cue.send':
+        // 실제로는 송출 프로그램으로 가야 함 (아직 연동 없음). 모의 서버는 기록만
+        console.log(`[mock] 대본 큐 송출: #${msg.cue_id}${msg.grouped_ids.length ? ' + ' + msg.grouped_ids.map((id) => '#' + id).join(' ') : ''}`)
+        break
       case 'subtitle.send':
         // 실제로는 송출 프로그램으로 가야 함 (아직 연동 없음). 모의 서버는 기록만
         console.log(`[mock] 임시 자막 송출 (${msg.source}): ${msg.text}`)

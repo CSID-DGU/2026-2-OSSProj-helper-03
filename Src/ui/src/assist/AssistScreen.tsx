@@ -17,6 +17,7 @@ import { DeviationTimeline } from './DeviationTimeline'
 import { EdgeFlash } from './EdgeFlash'
 import { PhonePreview } from './PhonePreview'
 import { RecognitionLog } from './RecognitionLog'
+import { SendPanel } from './SendPanel'
 import { ScriptList } from './ScriptList'
 import { TestInput } from './TestInput'
 import './assist.css'
@@ -38,12 +39,16 @@ interface Props {
   onSendSubtitle: (text: string, source: SubtitleSource) => void
   /** 위치 맞추기: AI 추정 위치를 이 큐로 */
   onJump: (cueId: number) => void
+  /** 대본 큐 송출 (오퍼레이터가 확인하고 누름) */
+  onSendCue: (cueId: number, groupedIds: number[]) => void
 }
 
 export function AssistScreen(props: Props) {
-  const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle, onJump } = props
+  const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle, onJump, onSendCue } = props
   const now = useNow()
   const [sent, setSent] = useState<SentSubtitle[]>([])
+  /** 마지막으로 송출한 대본 큐 */
+  const [sentCue, setSentCue] = useState<{ id: number; grouped: number[]; at: number } | null>(null)
   /** 닫은 엔진 오류 (받은 시각). 같은 오류는 다시 띄우지 않는다 */
   const [dismissedErrorAt, setDismissedErrorAt] = useState<number | null>(null)
   const cueById = useMemo(() => new Map(cues.map((c) => [c.id, c])), [cues])
@@ -64,17 +69,6 @@ export function AssistScreen(props: Props) {
     setSent((list) => [...list, { at: Date.now(), text, source }])
   }
 
-  // 휴대폰 미리보기: 지금 큐로 온 뒤에 임시 자막을 송출했으면 그것을 보여 준다
-  const cueSince = useMemo(() => {
-    let since = 0
-    for (let i = recognitionLog.length - 1; i >= 0 && recognitionLog[i].cueId === position?.cue_id; i--) {
-      since = recognitionLog[i].at
-    }
-    return since
-  }, [recognitionLog, position?.cue_id])
-  const lastSent = sent[sent.length - 1]
-  const tempSubtitle = lastSent && lastSent.at >= cueSince ? lastSent.text : undefined
-
   // 짧은 대사 묶어 보이기: 지금 줄 바로 뒤의 짧은 대사들
   const followers = useMemo(() => shortFollowers(cues, position?.cue_id ?? null), [cues, position?.cue_id])
 
@@ -82,6 +76,19 @@ export function AssistScreen(props: Props) {
     deviation?.return_cue_id != null && deviationAt !== null && now - deviationAt < RETURN_HIGHLIGHT_MS
       ? deviation.return_cue_id
       : null
+
+  // 송출 칸: AI 추천 큐 (복귀 직후면 복귀 큐). 송출은 오퍼레이터가 확인하고 누른다
+  const suggestId = returnId ?? position?.cue_id ?? null
+  const suggestFollowers = useMemo(() => shortFollowers(cues, suggestId), [cues, suggestId])
+  const sendCue = (cue: Cue) => {
+    const grouped = suggestFollowers.map((f) => f.id)
+    onSendCue(cue.id, grouped)
+    setSentCue({ id: cue.id, grouped, at: Date.now() })
+  }
+
+  // 휴대폰 미리보기: 가장 마지막에 송출한 것 (대본 큐 또는 애드리브 임시 자막)
+  const lastTemp = sent[sent.length - 1]
+  const showTemp = lastTemp && (!sentCue || lastTemp.at > sentCue.at)
 
   return (
     <div className="assist">
@@ -130,12 +137,20 @@ export function AssistScreen(props: Props) {
           returnId={returnId}
           paused={noInput}
           followerIds={followers.map((f) => f.id)}
+          sentIds={sentCue ? [sentCue.id, ...sentCue.grouped] : []}
           onJump={onJump}
         />
 
-        {/* 오른쪽: 위에서부터 알림 → 애드리브 임시 자막 → 휴대폰 미리보기 → 이탈 기록. 순서가 바뀌지 않게 고정 */}
+        {/* 오른쪽: 위에서부터 알림 → 자막 송출 → 애드리브 임시 자막 → 휴대폰 미리보기 → 이탈 기록. 순서 고정 */}
         <div className="side">
           <DeviationCard deviation={deviation} deviationAt={deviationAt} hold={hold} cueById={cueById} now={now} />
+          <SendPanel
+            cue={suggestId !== null ? cueById.get(suggestId) : undefined}
+            followers={suggestFollowers}
+            sentId={sentCue?.id ?? null}
+            deviating={deviating}
+            onSend={sendCue}
+          />
           <AdlibPanel
             deviationSince={deviating && deviation ? deviation.since : null}
             recognitionLog={recognitionLog}
@@ -143,10 +158,9 @@ export function AssistScreen(props: Props) {
             onSend={sendSubtitle}
           />
           <PhonePreview
-            cue={position ? cueById.get(position.cue_id) : undefined}
-            followers={followers}
-            deviating={deviating}
-            temp={tempSubtitle}
+            cue={!showTemp && sentCue ? cueById.get(sentCue.id) : undefined}
+            followers={!showTemp && sentCue ? sentCue.grouped.flatMap((id) => cueById.get(id) ?? []) : []}
+            temp={showTemp ? lastTemp.text : undefined}
           />
           <DeviationTimeline log={deviationLog} now={now} />
         </div>

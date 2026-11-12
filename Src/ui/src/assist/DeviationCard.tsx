@@ -58,7 +58,7 @@ export function DeviationCard({ deviation, deviationAt, hold, cueById, now }: Pr
         <h2 className="card-title">{HEADLINE[deviation.deviation_type].returned}</h2>
         <p className="card-cue">#{deviation.return_cue_id}</p>
         {cue && <p className="card-cue-text">{cue.text}</p>}
-        <p className="card-body">송출 프로그램에서 이 큐로 이동하세요</p>
+        <p className="card-body">아래 송출 칸에서 확인하고 송출하세요</p>
       </section>
     )
   }

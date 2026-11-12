@@ -70,7 +70,25 @@ export interface PositionSet {
   cue_id: number
 }
 
-export type ClientMessage = SessionStart | SessionEnd | SettingsUpdate | TestSay | SubtitleSend | PositionSet
+/**
+ * (추가) 대본 큐 송출. AI가 추천한 큐를 오퍼레이터가 확인하고 직접 내보낸다 (자동 송출 없음, 마지막 판단은 사람).
+ * grouped_ids: 함께 띄우는 짧은 대사(짧은 대사 묶어 보이기).
+ * 실서버는 아직 받지 않는다 (엔진 담당에 요청). 실제 관객 송출은 2단계 송출 프로그램 연동 후.
+ */
+export interface CueSend {
+  type: 'cue.send'
+  cue_id: number
+  grouped_ids: number[]
+}
+
+export type ClientMessage =
+  | SessionStart
+  | SessionEnd
+  | SettingsUpdate
+  | TestSay
+  | SubtitleSend
+  | PositionSet
+  | CueSend
 
 // ── 엔진 → 화면 ──────────────────────────────────────────
 
