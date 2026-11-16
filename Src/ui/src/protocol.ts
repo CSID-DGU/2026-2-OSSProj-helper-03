@@ -8,8 +8,11 @@ export type DeviationType = 'skip' | 'repeat' | 'adlib'
 /** 입력 구간: 대사 · 노래 */
 export type Segment = 'dialogue' | 'song'
 
-/** 소리 원천: 녹음 파일 재생 · 마이크 · 대사 입력(테스트용, 입력한 글자를 인식 결과로 씀) */
-export type InputMode = 'file' | 'mic' | 'text'
+/**
+ * 소리 원천: 녹음 파일 재생 · 마이크 · 대사 입력(테스트용, 입력한 글자를 인식 결과로 씀)
+ * · 브라우저(화면이 마이크나 녹음 파일 소리를 16kHz 모노 PCM16 바이너리로 보냄. 서버를 인터넷에 올렸을 때)
+ */
+export type InputMode = 'file' | 'mic' | 'text' | 'browser'
 
 // ── 화면 → 엔진 ──────────────────────────────────────────
 
@@ -23,6 +26,11 @@ export interface SessionStart {
    * 모의 서버는 읽는다.
    */
   input?: InputMode
+  /**
+   * (추가) 큐 파일 내용. 있으면 실서버는 서버 폴더에서 찾지 않고 이것을 읽는다 (인터넷 서버에서 내 대본으로 시험).
+   * 녹음 재생(file)은 큐 파일 옆 녹음을 틀어야 해서 서버 폴더에서 찾는다.
+   */
+  cue_csv?: string
 }
 
 /** 회차 종료 */
@@ -73,7 +81,7 @@ export interface PositionSet {
 /**
  * (추가) 대본 큐 송출. AI가 추천한 큐를 오퍼레이터가 확인하고 직접 내보낸다 (자동 송출 없음, 마지막 판단은 사람).
  * grouped_ids: 함께 띄우는 짧은 대사(짧은 대사 묶어 보이기).
- * 실서버는 아직 받지 않는다 (엔진 담당에 요청). 실제 관객 송출은 2단계 송출 프로그램 연동 후.
+ * 실서버는 받아서 회차 기록 · 로그에만 남긴다. 실제 관객 송출은 2단계 송출 프로그램 연동 후.
  */
 export interface CueSend {
   type: 'cue.send'
@@ -145,8 +153,11 @@ export interface CueOnAir {
 export interface EngineError {
   type: 'engine.error'
   message: string
-  /** session.start: 회차를 못 엶 / recognize: 음성인식이 연달아 실패하거나 끊김 */
-  during: 'session.start' | 'recognize'
+  /**
+   * session.start: 회차를 못 엶 / recognize: 음성인식이 연달아 실패하거나 끊김
+   * / limit: 인터넷 서버의 1회 사용 시간이 다 되어 회차를 멈춤
+   */
+  during: 'session.start' | 'recognize' | 'limit'
 }
 
 export type ServerMessage = PositionUpdate | DeviationAlert | InputStatus | CueOnAir | EngineError

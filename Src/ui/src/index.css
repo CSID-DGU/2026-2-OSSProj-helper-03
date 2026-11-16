@@ -141,3 +141,14 @@ button.link {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* 접속 코드 (인터넷 서버) */
+.start .code-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.start .code-row label {
+  flex: 1;
+}

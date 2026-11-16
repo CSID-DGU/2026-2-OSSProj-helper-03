@@ -8,14 +8,14 @@ Helper의 소스 코드를 두는 폴더입니다. 1단계 개발(7\~10주차) �
 Src/
 ├── engine/          음성 처리와 대본 추적 (Python)
 │   ├── cue_loader       ① 큐 시트 로더 (+ 정규화 · 자모 분해)
-│   ├── audio_input      ② 오디오 입력 (녹음 파일 재생 · 마이크)
+│   ├── audio_input      ② 오디오 입력 (녹음 파일 재생 · 마이크 · 브라우저가 보낸 소리)
 │   ├── vad              ② 음성 구간 감지 (Silero VAD, 소리 없는 조각은 음성인식에 안 보냄)
 │   ├── stt/             ③ 음성인식 (faster-whisper / Google / CLOVA 스트리밍)
 │   ├── aligner          ④ 대본 위치 추적
 │   ├── deviation        ⑤ 대본 이탈 감지 (1차)
 │   ├── protocol         엔진 → 화면 메시지 (ui/src/protocol.ts 와 같은 필드)
 │   └── pipeline         ②~⑤ 연결 (재생 · 인식 · 상태 스레드)
-├── server/          로컬 서버 (FastAPI, WebSocket ws://localhost:8000/ws)
+├── server/          로컬 서버 (FastAPI, WebSocket ws://localhost:8000/ws). 인터넷에 올리는 방법은 DEPLOY.md
 ├── ui/              보조 화면 (React, Vite, TypeScript)
 ├── eval/            성능 측정 (정답 라벨로 ±1큐 정확도 · 도달 지연)
 ├── tools/           convert_cues.py (큐 CSV → 화면 형식)
@@ -46,7 +46,7 @@ uvicorn server.main:app --port 8000
 |---|---|
 | `HELPER_DATA_DIR` | 공연 데이터 폴더 (저장소 밖). 화면에서 고른 큐 파일 이름을 이 폴더에서 찾는다 |
 | `HELPER_AUDIO_FILE` | 파일 재생 모드로 틀 녹음. 비우면 큐 파일과 같은 폴더의 첫 `.wav` (16kHz 모노) |
-| `HELPER_INPUT` | `file`(녹음 파일 재생, 기본) / `mic`(마이크. 녹음 파일이 필요 없음) / `text`(대사 입력 테스트). 화면의 시작 패널에서 소리 입력을 고르면(`session.start`의 `input`) 그 값이 먼저 |
+| `HELPER_INPUT` | `file`(녹음 파일 재생, 기본) / `mic`(마이크. 녹음 파일이 필요 없음) / `text`(대사 입력 테스트) / `browser`(화면이 보낸 소리). 화면의 시작 패널에서 소리 입력을 고르면(`session.start`의 `input`) 그 값이 먼저 |
 | `HELPER_MIC_DEVICE` | 마이크 장치 번호 또는 이름 일부. 비우면 기본 장치 (`python -m engine.audio_input --list`로 확인) |
 | `HELPER_STT` | `whisper`(로컬, 기본) / `google`(chirp_3 3초 조각) / `google_stream`(long 실시간) / `clova_stream` |
 | `HELPER_CHUNK_SEC` / `HELPER_HOP_SEC` | 음성인식에 보내는 조각 길이 / 간격. 간격을 짧게 하면 조각이 겹쳐 반응이 빨라지지만 CPU · API 사용량이 늘어남 |
@@ -56,6 +56,7 @@ uvicorn server.main:app --port 8000
 | `HELPER_VAD` | `1`이면 조용하고 말소리도 없는 조각은 음성인식에 보내지 않음 (조각 방식 엔진만. API 비용 절약 · 무음에서 힌트를 지어내는 것 줄이기) |
 | `HELPER_ALIGN` | 위치 추적기 설정 덮어쓰기 (보통은 비워 둠). 쉼표로 여러 개, 예: `ahead=10,lost_window=20`. 이름은 `engine/aligner.py`의 `Aligner` 참고, 틀린 이름이면 회차가 시작되지 않고 서버 로그에 "회차 시작 실패" |
 | `DEVIATE_AFTER_SEC` | 말소리가 이 시간 동안 대본과 안 맞으면 이탈 알림 |
+| `HELPER_INPUTS` / `HELPER_ACCESS_CODE` / `HELPER_MAX_SESSION_SEC` / `HELPER_MAX_SESSIONS` | 인터넷 서버용. 받을 소리 입력, 접속 코드, 회차 1번 최대 시간(초), 동시에 열 수 있는 회차 수. 비우면 제한 없음 ([DEPLOY.md](DEPLOY.md)) |
 | `HELPER_LOG_DIR` | 회차 기록 폴더. 비우면 `Src/logs`, `off`면 안 남김. 회차마다 `날짜_시각_공연ID.jsonl` 한 파일에 인식 글자 · 추적 위치 · 이탈 알림이 쌓인다 (형식은 `engine/session_log.py`). `eval/run_eval.py --results`에 그대로 넣어 다시 돌려 볼 수 있다 |
 
 키(Google 서비스 계정 JSON, CLOVA Secret Key)와 공연 데이터는 저장소에 넣지 않습니다. `.env`, `keys/`, `*.wav`는 `.gitignore`에 들어 있습니다.
@@ -84,15 +85,17 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 | 항목 | 지금 엔진이 하는 방식 (임시) | 정할 것 |
 |---|---|---|
 | 큐 CSV 열 | 화면 형식과 1차 데이터 형식(`cue_id, act, scene, type, speaker, text_ko`) 둘 다 읽음 | 열 이름 하나로 통일 |
-| 큐 파일 전달 | 화면이 보낸 파일 **이름**을 `HELPER_DATA_DIR`에서 찾음 | 업로드 주소 또는 내용 전송 |
+| 큐 파일 전달 | 화면이 큐 파일 내용(`cue_csv`)을 함께 보내면 그것을 읽음. 없거나 녹음 재생 회차면 파일 **이름**을 `HELPER_DATA_DIR`에서 찾음 (녹음 재생은 큐 파일 옆 녹음을 틀어야 해서) | — |
 | 이탈 유형 | 대본에 없는 말이 `DEVIATE_AFTER_SEC` 이어지면 시작 알림을 `adlib`으로 보내고, 복귀 알림에 진짜 유형(skip/repeat/adlib). 누락(안 들린 대사 2\~6줄을 건너뜀) · 반복(들었던 앞 대사로 되돌아감)은 기다리지 않고 복귀 큐를 채운 알림 하나로 보냄. 감지 상태(정상 · 의심 · 재탐색 · 이탈 · 노래 · 입력 없음)는 엔진 로그에만 남김 | 화면에 '미정' 유형 추가 (`engine/deviation.py`의 `START_TYPE`만 바꾸면 됨), 감지 상태를 화면에 보낼지 |
 | 노래 구간 | 현재 위치 큐가 가사면 `segment: "song"`, 노래 구간에서는 이탈 알림을 보내지 않음 | 오퍼레이터가 노래 구간을 지정하는 메시지 |
 | 상태 메시지 | `input.status`를 1초마다 보냄 (화면은 5초간 메시지가 없으면 '엔진 응답 없음') | — |
 | 신뢰도 | 추적 점수(0~100)를 0~1로 바꿔 보냄 | — |
 | 위치 맞추기 | `position.set {cue_id}`를 받으면 추적 위치를 그 큐로 옮기고(추적 대상이 아니면 그 앞 추적 큐) 이탈 판단도 거기서 다시 시작. 이탈 중이었으면 그 큐를 복귀로 알림. 신뢰도 1.0 위치 갱신을 보냄 | 공연 중 잘못 눌렀을 때 되돌리기 |
 | 녹음 같이 듣기 | 녹음 재생 회차면 `GET /session/audio`로 녹음 파일을 주고, `input.status`에 엔진 재생 위치 `audio_sec`(초)을 담음 | — |
-| 오류 알림 | 회차를 못 열면(키 없음 · 큐/녹음 파일 없음 · 마이크 오류) `engine.error {message, during: "session.start"}`, 음성인식이 3번 연달아 실패하거나 스트리밍이 끊기면 `during: "recognize"`로 화면에 알림 (서버 로그에도 남김) | — |
-| 소리 입력 선택 | `session.start`의 `input`(file / mic / text)을 읽음. 없으면 `.env`의 `HELPER_INPUT` | — |
+| 오류 알림 | 회차를 못 열면(키 없음 · 큐/녹음 파일 없음 · 마이크 오류) `engine.error {message, during: "session.start"}`, 음성인식이 3번 연달아 실패하거나 스트리밍이 끊기면 `during: "recognize"`, 인터넷 서버의 1회 사용 시간이 다 되면 `during: "limit"`로 화면에 알림 (서버 로그에도 남김) | — |
+| 소리 입력 선택 | `session.start`의 `input`(file / mic / text / browser)을 읽음. 없으면 `.env`의 `HELPER_INPUT` | — |
+| 브라우저 소리 | `input: "browser"` 회차에서 화면이 보내는 바이너리 메시지를 16kHz 모노 PCM16 소리로 받아 마이크처럼 추적함. 화면은 테스터의 마이크나 고른 녹음 파일을 0.1초 조각으로 보냄 (`ui/src/browserAudio.ts`). 서버는 소리를 저장하지 않음 | — |
+| 대본 큐 송출 | `cue.send {cue_id, grouped_ids}`를 받아 서버 로그와 회차 기록에만 남김 | 송출 프로그램 연동(2단계) |
 | 대사 입력 테스트 | `input: "text"` 회차에서 `test.say {text}`를 음성인식 결과 한 번으로 보고 실제 추적기 · 이탈 감지로 따라감 (음성인식 엔진 · 키 · 녹음 불필요). 같은 대사를 다시 쳐서 반복도 시험할 수 있게 걸러내기는 하지 않음. 애드리브 알림은 대본에 없는 말을 두 번, `DEVIATE_AFTER_SEC` 넘게 걸쳐 쳐야 뜸 | — |
 | 애드리브 임시 자막 | `subtitle.send {text, source}`를 받아 서버 로그와 회차 기록(`subtitle`)에만 남김 | 수행계획서에서 이번 학기 범위 밖(Won't) · 송출 프로그램 연동(2단계)이라 팀 합의 필요 |
 

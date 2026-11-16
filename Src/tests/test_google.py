@@ -74,3 +74,15 @@ def test_hedge_env(monkeypatch):
     assert eng.hedge == 2 and eng.label.endswith("x2")
     monkeypatch.setenv("GOOGLE_STT_HEDGE", "")
     assert GoogleEngine().hedge == 1
+
+
+def test_check_without_key_file(monkeypatch):
+    """키 파일 없이 서버에 붙은 서비스 계정을 쓸 때(Cloud Run): 프로젝트만 적으면 통과, 둘 다 없으면 MissingConfig."""
+    from engine.stt.base import MissingConfig
+
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
+    GoogleEngine().check()
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "")
+    with pytest.raises(MissingConfig):
+        GoogleEngine().check()

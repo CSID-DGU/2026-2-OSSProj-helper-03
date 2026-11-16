@@ -1,7 +1,9 @@
-"""② 오디오 입력. 두 가지가 같은 모양(frames · run · segment · now_audio · level · pos · done)이다.
+"""② 오디오 입력. 모두 같은 모양(frames · run · segment · now_audio · level · pos · done)이다.
 
 - FileSource: 녹음 파일을 실제 시간 속도로 흘려보냄 (HELPER_INPUT=file, 기본)
 - MicSource:  마이크 소리를 받아 최근 60초를 고리 버퍼에 둠 (HELPER_INPUT=mic, sounddevice)
+- PushSource: 브라우저가 WebSocket 으로 보낸 소리를 받음 (input=browser). 서버를 인터넷에 올렸을 때
+              테스터의 마이크나 녹음 파일을 브라우저가 16kHz 모노 PCM16 으로 바꿔 보낸다
 
 마이크 확인:  python -m engine.audio_input --list   /   python -m engine.audio_input --test 3
 """
@@ -284,6 +286,43 @@ class MicSource:
 
     def stop(self):
         self.stopped.set()
+
+
+class PushSource(MicSource):
+    """브라우저가 보낸 소리를 받는다. MicSource 와 같은 고리 버퍼를 쓰고, 장치 대신 feed() 로 소리가 들어온다.
+
+    브라우저(화면)가 마이크나 녹음 파일 소리를 16kHz 모노 PCM16(리틀 엔디언)으로 바꿔 0.1초 안팎씩 보낸다.
+    소리 시각은 받은 소리 길이라서, 네트워크가 잠깐 밀려도 인식 조각이 어긋나지 않는다.
+    """
+
+    def __init__(self, buffer_sec: float = 60.0):
+        super().__init__(None, buffer_sec)
+        self.name = "브라우저"
+
+    def open(self):
+        """장치를 열 필요 없음 (소리는 feed 로 들어온다)."""
+
+    def feed(self, data: bytes):
+        """WebSocket 으로 받은 PCM16 조각 하나. 회차가 끝났으면 버린다."""
+        if self.stopped.is_set() or not data:
+            return
+        if len(data) % 2:          # 바이트가 홀수면 마지막 반 샘플은 버림
+            data = data[:-1]
+        self._q.put(np.frombuffer(data, dtype="<i2").astype("float32") / 32768.0)
+
+    def frames(self):
+        """받은 조각을 차례로 버퍼에 넣고 내보낸다. stop() 까지 계속."""
+        try:
+            while not self.stopped.is_set():
+                try:
+                    frame = self._q.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                self._push(frame)
+                yield to_pcm16(frame)
+        finally:
+            self.level = 0.0
+            self.done.set()
 
 
 def _cli(argv=None):

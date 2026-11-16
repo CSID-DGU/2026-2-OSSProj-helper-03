@@ -1,33 +1,30 @@
 // 임시 시작 패널. 준비 화면(그림 5)을 만들기 전까지 공연 이름과 큐 파일만 받아 회차를 시작한다.
 // 마지막으로 시작한 설정(공연 이름 · 큐 파일 내용 · 소리 입력)을 브라우저에 기억해 다음에 다시 채운다
 // (회차를 끝내고 돌아올 때마다 샘플 대본으로 돌아가 다른 대본으로 시작하던 실수 방지).
+// 인터넷 서버로 빌드하면(VITE_INPUTS, VITE_NEED_CODE) 브라우저 소리 입력과 접속 코드 칸이 보인다.
 
 import { useState } from 'react'
 import sampleCsv from '../mock/sample_cues.csv?raw'
 import { parseCueCsv, type Cue } from './cues'
-import type { InputMode } from './protocol'
-import { ENGINE_URL, type Connection } from './useEngine'
+import { AVAILABLE_INPUTS, INPUT_OPTIONS, type InputChoice } from './inputs'
+import { ENGINE_URL, NEED_CODE, type Connection } from './useEngine'
 
 const CONNECTION_LABEL: Record<Connection, string> = {
   connecting: '연결 중',
   open: '연결됨',
   closed: '끊김 (다시 연결하는 중)',
+  denied: '접속 코드가 맞지 않음',
 }
 
-const INPUT_OPTIONS: { mode: InputMode; label: string; hint: string }[] = [
-  { mode: 'file', label: '음성 파일', hint: '녹음 파일을 실제 시간 속도로 재생하며 추적' },
-  { mode: 'mic', label: '마이크', hint: '마이크로 들어오는 소리를 추적' },
-  { mode: 'text', label: '대사 입력 (테스트)', hint: '대사를 직접 입력하면 인식 결과로 보고 추적. 녹음·마이크 없이 확인용' },
-]
-
-const SAMPLE = { name: '샘플 공연', cueFile: 'sample_cues.csv', csv: sampleCsv, input: 'file' as InputMode }
+const DEFAULT_INPUT: InputChoice = AVAILABLE_INPUTS.includes('file') ? 'file' : AVAILABLE_INPUTS[0]
+const SAMPLE = { name: '샘플 공연', cueFile: 'sample_cues.csv', csv: sampleCsv, input: DEFAULT_INPUT }
 const STORAGE_KEY = 'helper.start'
 
 interface Saved {
   name: string
   cueFile: string
   csv: string
-  input: InputMode
+  input: InputChoice
 }
 
 /** 지난번 설정. 없거나 읽을 수 없으면(사생활 보호 모드 등) 샘플 */
@@ -36,7 +33,7 @@ function loadSaved(): Saved {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Saved | null
     if (saved && saved.csv && saved.cueFile) {
       parseCueCsv(saved.csv)   // 형식이 깨졌으면 샘플로
-      return saved
+      return { ...saved, input: AVAILABLE_INPUTS.includes(saved.input) ? saved.input : DEFAULT_INPUT }
     }
   } catch {
     // 저장 안 됨 · 깨진 값: 샘플로 시작
@@ -52,19 +49,37 @@ function save(value: Saved) {
   }
 }
 
-interface Props {
-  connection: Connection
-  onStart: (show: { name: string; cueFile: string; cues: Cue[]; input: InputMode }) => void
+export interface StartRequest {
+  name: string
+  cueFile: string
+  cues: Cue[]
+  /** 큐 파일 내용 (엔진에 그대로 보냄) */
+  csv: string
+  input: InputChoice
+  /** '내 녹음 파일'로 고른 파일 */
+  audioFile: File | null
 }
 
-export function StartPanel({ connection, onStart }: Props) {
+interface Props {
+  connection: Connection
+  /** 지금 쓰는 접속 코드 */
+  code: string
+  onCode: (code: string) => void
+  /** 회차를 못 열었을 때 (마이크 허용 안 됨 · 녹음 파일을 못 엶 등) */
+  error: string | null
+  onStart: (req: StartRequest) => void
+}
+
+export function StartPanel({ connection, code, onCode, error: startError, onStart }: Props) {
   const [initial] = useState(loadSaved)
   const [name, setName] = useState(initial.name)
   const [cueFile, setCueFile] = useState(initial.cueFile)
   const [csv, setCsv] = useState(initial.csv)
   const [cues, setCues] = useState<Cue[]>(() => parseCueCsv(initial.csv))
   const [error, setError] = useState<string | null>(null)
-  const [input, setInput] = useState<InputMode>(initial.input)
+  const [input, setInput] = useState<InputChoice>(initial.input)
+  const [audioFile, setAudioFile] = useState<File | null>(null)
+  const [codeDraft, setCodeDraft] = useState(code)
 
   const applyCsv = (fileName: string, text: string) => {
     setCues(parseCueCsv(text))
@@ -84,8 +99,11 @@ export function StartPanel({ connection, onStart }: Props) {
 
   const start = () => {
     save({ name: name.trim(), cueFile, csv, input })
-    onStart({ name: name.trim(), cueFile, cues, input })
+    onStart({ name: name.trim(), cueFile, cues, csv, input, audioFile })
   }
+
+  const options = INPUT_OPTIONS.filter((o) => AVAILABLE_INPUTS.includes(o.choice))
+  const showCode = NEED_CODE || connection === 'denied'
 
   return (
     <main className="start">
@@ -93,6 +111,24 @@ export function StartPanel({ connection, onStart }: Props) {
       <p className="muted">
         엔진 {ENGINE_URL} · <span className={`conn conn-${connection}`}>{CONNECTION_LABEL[connection]}</span>
       </p>
+
+      {showCode && (
+        <form
+          className="code-row"
+          onSubmit={(e) => {
+            e.preventDefault()
+            onCode(codeDraft.trim())
+          }}
+        >
+          <label>
+            접속 코드
+            <input value={codeDraft} onChange={(e) => setCodeDraft(e.target.value)} autoComplete="off" />
+          </label>
+          <button type="submit" className="small">
+            연결
+          </button>
+        </form>
+      )}
 
       <label>
         공연 이름
@@ -114,14 +150,14 @@ export function StartPanel({ connection, onStart }: Props) {
 
       <fieldset className="modes">
         <legend>소리 입력</legend>
-        {INPUT_OPTIONS.map((opt) => (
-          <label key={opt.mode} className="mode">
+        {options.map((opt) => (
+          <label key={opt.choice} className="mode">
             <input
               type="radio"
               name="input"
-              value={opt.mode}
-              checked={input === opt.mode}
-              onChange={() => setInput(opt.mode)}
+              value={opt.choice}
+              checked={input === opt.choice}
+              onChange={() => setInput(opt.choice)}
             />
             <span>
               {opt.label}
@@ -129,14 +165,26 @@ export function StartPanel({ connection, onStart }: Props) {
             </span>
           </label>
         ))}
-        <p className="muted small">
-          실서버 · 모의 서버 모두 이 선택을 따릅니다. 음성 파일은 큐 파일과 같은 폴더의 녹음(또는 서버의 HELPER_AUDIO_FILE)을
-          재생합니다.
-        </p>
+        {input === 'browser-file' && (
+          <label>
+            녹음 파일
+            <input type="file" accept="audio/*" onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)} />
+          </label>
+        )}
+        {(input === 'browser-mic' || input === 'browser-file') && (
+          <p className="muted small">소리는 저장하지 않고, 음성인식(Google)에만 보냅니다.</p>
+        )}
       </fieldset>
 
+      {startError && <p className="error">{startError}</p>}
+
       <button
-        disabled={connection !== 'open' || cues.length === 0 || name.trim() === ''}
+        disabled={
+          connection !== 'open' ||
+          cues.length === 0 ||
+          name.trim() === '' ||
+          (input === 'browser-file' && audioFile === null)
+        }
         onClick={start}
       >
         보조 화면 시작

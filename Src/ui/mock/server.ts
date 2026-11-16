@@ -325,7 +325,8 @@ wss.on('connection', (ws) => {
   console.log('[mock] 화면 연결됨')
   let session: MockSession | null = null
 
-  ws.on('message', (data) => {
+  ws.on('message', (data, isBinary) => {
+    if (isBinary) return // 브라우저 소리: 모의 서버는 시나리오만 재생하므로 버림
     let msg: ClientMessage
     try {
       msg = JSON.parse(String(data))
@@ -343,7 +344,7 @@ wss.on('connection', (ws) => {
           text.start()
           session = text
         } else {
-          if (msg.input === 'mic') console.log('[mock] 마이크 모드는 흉내만 냄: 시나리오를 재생')
+          if (msg.input === 'mic' || msg.input === 'browser') console.log('[mock] 마이크 · 브라우저 소리는 흉내만 냄: 시나리오를 재생')
           const scenario = new Session(ws, msg.show_id)
           scenario.start()
           session = scenario
