@@ -55,11 +55,15 @@ def test_browser_session(sample_cues, monkeypatch):
     monkeypatch.setattr(srv, "get_engine", lambda name: FakeSTT([c.text for c in lines[:3]]))
     monkeypatch.setattr(srv, "find_cue_file", lambda name: pytest.fail("서버 폴더에서 큐를 찾음"))
 
+    got = []
     with TestClient(srv.app) as client, client.websocket_connect("/ws") as ws:
         ws.send_json(start_msg(cue_file="내 대본.csv", cue_csv=SAMPLE_CSV.read_text(encoding="utf-8"), input="browser"))
-        for _ in range(95):                                   # 9.5초 = 3초 조각 3개
-            ws.send_bytes(pcm(0.1))
-        got = receive_until(ws, lambda g: sum(m["type"] == "position.update" for m in g) >= 3)
+        # 3초 조각을 하나씩 보내고 결과를 받은 뒤 다음 조각을 보낸다. 한꺼번에 보내면 엔진은 실시간 입력에서
+        # 밀린 조각으로 보고 최신 조각만 인식한다 (pipeline._chunk_loop). 실제 브라우저는 0.1초마다 보냄
+        for _ in range(3):
+            for _ in range(30):
+                ws.send_bytes(pcm(0.1))
+            got += receive_until(ws, lambda g: any(m["type"] == "position.update" for m in g))
         ws.send_json({"type": "session.end", "show_id": "t"})
 
     assert [m["cue_id"] for m in got if m["type"] == "position.update"] == [c.id for c in lines[:3]]
