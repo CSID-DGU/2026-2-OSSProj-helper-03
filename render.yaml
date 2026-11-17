@@ -1,0 +1,20 @@
+# Render 에 엔진을 올릴 때 쓰는 설정 (Blueprint). 자세한 순서는 Src/DEPLOY.md
+# 값이 sync: false 인 것은 Render 화면에서 직접 넣는다 (저장소에 적지 않음)
+services:
+  - type: web
+    name: helper-engine
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./Src/Dockerfile
+    dockerContext: ./Src
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: HELPER_ACCESS_CODE
+        sync: false
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      # 서비스 계정 키는 Render 의 Secret Files 에 google-key.json 이름으로 올린다
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/google-key.json

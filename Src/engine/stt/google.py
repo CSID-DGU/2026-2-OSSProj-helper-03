@@ -4,6 +4,7 @@
 - google_stream : 실시간 스트리밍. long(global) 은 중간 결과가 약 1초마다 와서 빠름
                   (chirp_3 스트리밍은 중간 결과가 없어 실시간에 부적합)
 인증: 서비스 계정 키 JSON 경로를 GOOGLE_APPLICATION_CREDENTIALS 에 (역할: Cloud Speech 클라이언트)
+      서버에 붙은 서비스 계정을 쓸 때(Cloud Run)는 GOOGLE_APPLICATION_CREDENTIALS 를 비우고 GOOGLE_CLOUD_PROJECT 만 적는다
 
 대본 힌트 주의 (10/20 실험): 소리가 애매하면 chirp_3 가 힌트 문장을 그대로 결과로 내놓는다 (힌트 베끼기.
 힌트 네 줄을 통째로 이어 붙인 결과도 나옴). boost 를 10 → 3 으로 낮춰도 결과가 똑같았고, 짧은 큐(5음절 미만)를
@@ -50,6 +51,9 @@ class GoogleEngine(STTEngine):
         self._local = threading.local()   # 스레드별 마지막 요청 기록 (request_info)
 
     def check(self):
+        if self.cred is None and self.project:
+            # 키 파일 없이 서버에 붙은 서비스 계정을 쓴다 (Cloud Run 등). 프로젝트는 꼭 적어야 함
+            return
         if not self.cred or not self.cred.exists():
             raise MissingConfig(f"GOOGLE_APPLICATION_CREDENTIALS 키 파일이 없음: {self.cred}")
         if not self.project:
@@ -62,7 +66,8 @@ class GoogleEngine(STTEngine):
         from google.cloud.speech_v2 import SpeechClient
         from google.cloud.speech_v2.types import cloud_speech
 
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(self.cred)
+        if self.cred is not None:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(self.cred)
         opts = None if self.location == "global" else ClientOptions(
             api_endpoint=f"{self.location}-speech.googleapis.com")
         self.client = SpeechClient(client_options=opts)

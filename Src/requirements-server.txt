@@ -1,0 +1,10 @@
+# 인터넷 서버(Dockerfile)용. 서버에는 마이크가 없고 음성인식은 Google 만 쓰므로
+# sounddevice · faster-whisper 는 넣지 않는다 (이미지가 작아지고 빨리 뜸)
+fastapi
+uvicorn[standard]
+numpy
+soundfile
+rapidfuzz
+jamo
+python-dotenv
+google-cloud-speech

@@ -14,7 +14,20 @@ import {
 /** 엔진 주소. 실서버와 모의 서버 모두 기본값을 쓴다. .env.local의 VITE_ENGINE_URL로 바꿀 수 있다. */
 export const ENGINE_URL: string = import.meta.env.VITE_ENGINE_URL ?? 'ws://localhost:8000/ws'
 
-export type Connection = 'connecting' | 'open' | 'closed'
+/** 인터넷 서버가 접속 코드를 받는지 (VITE_NEED_CODE=1 로 빌드) */
+export const NEED_CODE: boolean = import.meta.env.VITE_NEED_CODE === '1'
+
+/** 접속 코드를 붙인 엔진 주소 */
+export function engineUrl(code: string): string {
+  if (!code) return ENGINE_URL
+  return `${ENGINE_URL}${ENGINE_URL.includes('?') ? '&' : '?'}code=${encodeURIComponent(code)}`
+}
+
+/** denied: 서버가 접속 코드가 틀렸다고 연결을 닫음 (다시 연결하지 않음) */
+export type Connection = 'connecting' | 'open' | 'closed' | 'denied'
+
+/** 서버가 접속 코드가 틀렸을 때 닫는 코드 (server/main.py) */
+const CLOSE_DENIED = 4401
 
 /** 이번 회차의 이탈 한 건. since(이탈 시작 시각)로 시작 알림과 복귀 알림을 묶는다. */
 export interface DeviationLogEntry {
@@ -161,9 +174,14 @@ export function useEngine(url: string = ENGINE_URL) {
         if (msg) dispatch({ kind: 'message', msg, at: Date.now() })
         else console.warn('[engine] 알 수 없는 메시지', event.data)
       }
-      ws.onclose = () => {
+      ws.binaryType = 'arraybuffer'
+      ws.onclose = (event) => {
         if (socketRef.current === ws) socketRef.current = null
         if (disposed) return
+        if (event.code === CLOSE_DENIED) {
+          dispatch({ kind: 'connection', connection: 'denied' })
+          return
+        }
         dispatch({ kind: 'connection', connection: 'closed' })
         retryTimer = setTimeout(connect, retryMs)
         retryMs = Math.min(retryMs * 2, RETRY_MAX_MS)
@@ -187,8 +205,14 @@ export function useEngine(url: string = ENGINE_URL) {
     return true
   }, [])
 
+  /** 브라우저 소리 입력 회차에서 소리 조각(PCM16)을 보냄. 연결이 안 돼 있으면 버림 */
+  const sendAudio = useCallback((pcm: ArrayBuffer) => {
+    const ws = socketRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(pcm)
+  }, [])
+
   /** 회차를 새로 시작할 때 이전 회차 상태를 비운다 */
   const reset = useCallback(() => dispatch({ kind: 'reset' }), [])
 
-  return { state, send, reset }
+  return { state, send, sendAudio, reset }
 }

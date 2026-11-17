@@ -4,7 +4,8 @@
 
 import { useMemo, useState } from 'react'
 import type { Cue } from '../cues'
-import type { InputMode, SubtitleSource } from '../protocol'
+import { INPUT_LABEL, type InputChoice } from '../inputs'
+import type { SubtitleSource } from '../protocol'
 import { RETURN_HIGHLIGHT_MS, STALE_MS } from '../settings'
 import type { EngineState } from '../useEngine'
 import { useNow } from '../useNow'
@@ -22,12 +23,16 @@ import { ScriptList } from './ScriptList'
 import { TestInput } from './TestInput'
 import './assist.css'
 
-const INPUT_LABEL: Record<InputMode, string> = { file: '음성 파일', mic: '마이크', text: '대사 입력 (테스트)' }
+const ERROR_HEADLINE = {
+  'session.start': '회차를 시작하지 못했습니다',
+  recognize: '음성인식 오류',
+  limit: '사용 시간이 끝났습니다',
+} as const
 
 interface Props {
   showName: string
   cues: Cue[]
-  input: InputMode
+  input: InputChoice
   /** 회차 시작 시각 (epoch ms) */
   startedAt: number
   engine: EngineState
@@ -113,9 +118,9 @@ export function AssistScreen(props: Props) {
         {shownError && (
           <div className="engine-error" role="alert">
             <span>
-              {shownError.during === 'session.start' ? '회차를 시작하지 못했습니다' : '음성인식 오류'} · {shownError.message}
+              {ERROR_HEADLINE[shownError.during]} · {shownError.message}
             </span>
-            {shownError.during === 'session.start' ? (
+            {shownError.during !== 'recognize' ? (
               <button className="small" onClick={onEnd}>
                 시작 화면으로
               </button>

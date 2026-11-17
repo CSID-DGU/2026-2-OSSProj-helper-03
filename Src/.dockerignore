@@ -1,0 +1,7 @@
+# 이미지에는 engine · server · requirements-server.txt 만 들어간다. 나머지(특히 키 · 대본 · 녹음)는 보내지 않는다
+*
+!engine/
+!server/
+!requirements-server.txt
+**/__pycache__
+**/*.pyc

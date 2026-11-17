@@ -14,8 +14,9 @@ def deviation_alert(deviation_type: str, since: int, return_cue_id: int | None) 
 
 
 def engine_error(message: str, during: str) -> dict:
-    """화면이 알아야 할 엔진 오류. during = session.start(회차를 못 엶) / recognize(음성인식이 계속 실패)."""
-    assert during in ("session.start", "recognize")
+    """화면이 알아야 할 엔진 오류. during = session.start(회차를 못 엶) / recognize(음성인식이 계속 실패)
+    / limit(인터넷에 올린 서버의 1회 사용 시간이 다 되어 회차를 멈춤)."""
+    assert during in ("session.start", "recognize", "limit")
     return {"type": "engine.error", "message": str(message), "during": during}
 
 

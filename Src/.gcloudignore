@@ -1,0 +1,12 @@
+# gcloud run deploy --source . 때 Google 에 올리는 파일. 이미지를 만드는 데 필요한 것만 보낸다
+# (이 파일이 없으면 .gitignore 만 보고 올려서 ui/node_modules 같은 큰 폴더까지 올라감)
+*
+!Dockerfile
+!.dockerignore
+!requirements-server.txt
+!engine/
+!engine/**
+!server/
+!server/**
+__pycache__/
+*.pyc
