@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 from jamo import h2j, j2hcj
 
+from .numbers import read_numbers
+
 TYPE_ALIASES = {
     "dialogue": "dialogue", "대사": "dialogue",
     "lyric": "lyric", "가사": "lyric",
@@ -35,8 +37,13 @@ class Cue:
 
 
 def normalize(text: str) -> str:
-    """기호·공백을 빼고 한글·영문·숫자만 남긴다."""
-    return re.sub(r"[^0-9A-Za-z가-힣]", "", text or "")
+    """숫자를 한글 읽기로 바꾸고(numbers.py, "3시" → "세시") 기호·공백을 빼서 한글·영문·숫자만 남긴다."""
+    return re.sub(r"[^0-9A-Za-z가-힣]", "", read_numbers(text or ""))
+
+
+def syllables(text: str) -> int:
+    """한글 음절 수 (숫자는 읽는 소리로 셈: "3시 30분" = 5). 말하는 데 드는 시간 계산용."""
+    return len(re.findall(r"[가-힣]", read_numbers(text or "")))
 
 
 def to_jamo(text: str) -> str:

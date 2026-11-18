@@ -8,6 +8,7 @@ Helper의 소스 코드를 두는 폴더입니다. 1단계 개발(7\~10주차) �
 Src/
 ├── engine/          음성 처리와 대본 추적 (Python)
 │   ├── cue_loader       ① 큐 시트 로더 (+ 정규화 · 자모 분해)
+│   ├── numbers          ① 숫자를 한글 읽기로 (3시 → 세시, 대본과 인식 글자를 비교하기 전에)
 │   ├── audio_input      ② 오디오 입력 (녹음 파일 재생 · 마이크 · 브라우저가 보낸 소리)
 │   ├── vad              ② 음성 구간 감지 (Silero VAD, 소리 없는 조각은 음성인식에 안 보냄)
 │   ├── stt/             ③ 음성인식 (faster-whisper / Google / CLOVA 스트리밍)
