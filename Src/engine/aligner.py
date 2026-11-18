@@ -55,6 +55,22 @@
 - 해 봤지만 뺀 것: 끝까지 들었던 줄을 겹치지 않는 조각에서 처음부터 다시 들으면 반복으로 보기 (A4 는 잡지만 노래 ·
   침묵 구간에서 지금 줄 힌트를 베낀 글자에 걸려 잘못된 반복 알림이 11분에 14건), 지나친 줄은 겹치는 두 조각에서 들려야
   들은 것으로 보기 (줄이 조각 맨 앞에 걸리고 앞 조각이 빈 결과면 정상도 한 번만 들려서 잘못된 누락 알림 · 반복을 놓침)
+8차 (힌트 베끼기 · 인식 끊김에 덜 속게. 빠른 설정 2.5/1초에서 이탈 감지가 줄던 것):
+- echo_filter: 근처 대사(지나간 줄 ~ 다음 줄)가 원문 그대로 대본을 거슬러 가는 순서로 들어 있으면 힌트를 이어 붙여 베낀
+  것으로 본다. 아직 안 온 줄(다음 대사)의 원문을 먼저 지우고, 남은 글자에도 두 줄 넘게 거꾸로 들어 있으면 통째로 버린다
+  (원본 녹음 끝 무음에서 지금 줄 56, 지나간 줄 55 · 53 의 원문을 힌트 순서대로 이어 적어 냄)
+- end_check: 앞으로 새 줄로 넘어간 근거가 그 조각 하나뿐이면, 소리가 END_OVERLAP 초 넘게 겹치는 다음 조각(빈 결과는 빼고)에도
+  그 줄이 있는지 본다. 없으면 힌트를 베낀 글자로 보고(소리가 애매하면 다음 대사를 그대로 적어 냄) 안 들린 줄로 센다 (누락 A1)
+- dropout_guard: 지나친 줄 중 안 들린 대사를, 마지막으로 위치를 확인한 뒤 소리는 컸는데(loud) 인식이 비어 있던 시간 동안
+  사람이 다 말할 수 있었으면 누락으로 세지 않는다 (원본 녹음 잘못된 누락 알림). 배우가 쉬는 동안(A1 은 -40dBFS)과 말하는데
+  인식이 빈 경우(-21 ~ -24dBFS)를 소리 크기로 가른다. 소리 크기를 모르면(loud=None) 세지 않는다
+- repeat_confirm: 앞 줄로 돌아갈 후보가 나온 뒤, 그 앞 줄에서 시작해 지금 줄로 이어지는 말이나 긴 줄(RESTART_JAMO 넘게)을
+  처음부터 다시 하는 말을, 지금 줄을 마지막으로 들은 조각과 소리가 안 겹치는 조각에서 들으면 반복으로 본다 (Step.again).
+  추적기가 지금 줄에 머물러도 반복을 알 수 있다 (반복 A4 · B3). 7차에서 뺀 '처음부터 다시'를 돌아갈 후보가 있을 때로 좁힌 것.
+  이어지는 말은 돌아갈 줄을 지금 줄보다 먼저 들었을 때만 본다 (두 줄을 한 조각에서 처음 같이 들었으면 힌트를 베껴 앞질러 감)
+  저장된 인식 기록으로 다시 돌린 결과 (11/18): 빠른 설정(2.5/1초, 같은 요청 2번) 이탈 9건 중 5 → 8건, 기본 설정(3/1.5초)
+  7 → 8건, 잘못된 알림은 둘 다 0건 그대로. 다른 설정으로 잰 기록도 찾은 수는 같거나 늘고 잘못된 알림 0건 그대로.
+  원본 녹음 22벌 76분 잘못된 알림 11 → 8건, ±1큐 정확도 평균 87.3 → 87.4%, 도달 지연 그대로
 """
 import inspect
 import re
@@ -71,6 +87,10 @@ from .cue_loader import TRACK_TYPES, Cue, to_jamo
 # 먼 이동 근거: 대사 자모 중 인식 글자와 HEARD_BLOCK 자모 넘게 이어서 같은 부분이 HEARD_PART 넘으면 그 줄을 들은 것으로.
 # 실제 인식 기록에서 말한 대사는 81% 가 넘고, 상관없는 대사는 대본에 같은 줄이 또 있을 때(1.9%)만 넘었다
 HEARD_BLOCK, HEARD_PART = 4, 0.6
+# 지금 줄을 처음부터 다시 하는 것으로 반복을 볼 때 줄의 최소 자모 수 (약 7음절). 이보다 짧은 줄은 한 조각에 통째로 들어감
+RESTART_JAMO = 18
+# 새 줄을 확인할 다음 조각은 그 줄로 넘어간 조각과 이만큼(초) 넘게 겹쳐야 함 (덜 겹치면 그 줄 소리가 이미 지나갔을 수 있음)
+END_OVERLAP = 1.0
 
 # 개선 전(엔진 서버 첫 버전) 설정. 평가(eval/run_eval.py --baseline)에서 비교용으로 쓴다.
 BASELINE = dict(min_jamo=6, accept=65.0, back=3, ahead=15, small_step=2, confirm=2, lost_after=3,
@@ -104,7 +124,7 @@ class Aligner:
                  strong=85.0, strong_jamo=10, anchor="matched", widen=0, near_first=1,
                  scene_limit=1, lost_window=30, recent=3, heard_score=60.0, prefer_near=1,
                  pending_sec=9.0, pace=8.0, far=4, far_jamo=40, far_lines=2, quiet_sec=30.0, quiet_part=0.5,
-                 hint_back=2):
+                 hint_back=2, dropout_guard=1, end_check=1, repeat_confirm=1, echo_filter=1):
         self.items = [c for c in cues if c.type in track_types and c.jamo]
         if not self.items:
             raise ValueError("추적할 큐(대사·가사)가 없습니다.")
@@ -134,8 +154,17 @@ class Aligner:
         self.far_lines = int(far_lines)  # 후보 근처에서 서로 다른 대사를 이만큼 넘게 들었으면 따라잡기 (0 = 안 봄)
         self.quiet_sec = quiet_sec      # 인식 글자가 없던 시간을 최근 이만큼(초)만 센다
         self.quiet_part = quiet_part    # 끊긴 시간으로 따라잡을 때는 far_jamo 의 이만큼만 들으면 됨
-        self.gaps: deque[tuple[float, float]] = deque(maxlen=64)   # 인식 글자가 없던 조각 (소리 끝 시각, 길이)
+        self.gaps: deque[tuple[float, float, bool | None]] = deque(maxlen=64)   # 인식 글자가 없던 조각 (소리 끝 시각, 길이, 소리가 컸나)
         self.hint_back = int(hint_back)  # 대본 힌트에 넣을 지나간 줄 수 (반복한 줄을 알아듣게)
+        self.dropout_guard = int(dropout_guard)   # 인식이 비어 있던 동안 지나친 줄은 누락으로 안 셈
+        self.end_check = int(end_check)           # 새 줄로 넘어간 근거를 겹치는 다음 조각으로 확인
+        self.repeat_confirm = int(repeat_confirm)  # 돌아갈 후보 뒤 앞 줄부터 이어 말하거나 지금 줄을 다시 하면 반복
+        self.echo_filter = int(echo_filter)       # 힌트를 통째로 베낀 결과(대본을 거슬러 가는 원문 이어 붙이기)는 버림
+        self.chunk_start = 0.0           # 지금 보는 인식 결과의 조각 시작 시각
+        self.seen: dict[int, tuple[float, float, int]] = {}   # 줄별 (처음 · 마지막으로 들은 조각의 끝 시각, 들은 가장 먼 자모 위치)
+        self.check_end: tuple[int, float] | None = None  # 다음 조각으로 확인할 새 줄, 그 줄로 넘어간 조각의 끝 시각
+        self.suspect: set[int] = set()   # 겹치는 다음 조각에 없던 줄 (힌트를 베낀 것으로 봄)
+        self.back_cands: list[tuple[int, float]] = []    # 앞 줄로 돌아갈 후보 (위치, 소리 끝 시각)
         self.clock = 0.0              # 마지막 인식 글자의 소리 끝 시각
         self.at: float | None = None  # 마지막으로 위치를 확인한 소리 시각
         self.stale = 0                # 마지막으로 위치를 확인한 뒤 지난 인식 횟수 (빈 결과 포함)
@@ -161,6 +190,8 @@ class Aligner:
             return False
         self.pos, self.miss, self.pending, self.stale, self.at = idx, 0, [], 0, self.clock
         self.gaps.clear()             # 오퍼레이터가 맞췄으므로 그 전 끊김으로 따라잡지 않음
+        self.check_end, self.back_cands = None, []
+        self.suspect.clear()          # 오퍼레이터가 맞춘 위치부터 새로 판단
         return True
 
     def _lost_ranges(self, scene_limit: int, window: int) -> list[int]:
@@ -183,21 +214,22 @@ class Aligner:
         back = self.items[max(0, self.pos - self.hint_back):self.pos]
         return self.items[self.pos:self.pos + 1 + n_next] + back[::-1]
 
-    def _search(self, t: str, lo: int, hi: int) -> tuple[int, float]:
+    def _search(self, t: str, lo: int, hi: int) -> tuple[int, float, tuple[int, int]]:
+        """(현재 위치가 될 큐, 점수, 대본 글자열에서 맞은 구간 [시작, 끝))."""
         a = self.starts[lo]
         b = self.starts[hi] if hi < len(self.items) else len(self.text)
         al = fuzz.partial_ratio_alignment(t, self.text[a:b])
+        start, end = al.dest_start, al.dest_end
         if self.anchor == "mid":
             at = a + (al.dest_start + al.dest_end) // 2
         else:   # 맞은 구간의 끝 = 배우가 방금 말한 곳 (한 조각에 큐가 여러 개일 때 덜 늦음)
-            end = al.dest_end
-            if self.anchor == "matched":   # 구간 안에서 실제로 같은 마지막 글자까지만
+            if self.anchor == "matched":   # 구간 안에서 실제로 같은 글자만 (우연히 같은 낱자는 빼고)
                 ops = [op for op in Levenshtein.opcodes(t, self.text[a + al.dest_start:a + al.dest_end])
-                       if op.tag == "equal" and op.dest_end - op.dest_start >= 3]   # 우연히 같은 낱자는 빼고
+                       if op.tag == "equal" and op.dest_end - op.dest_start >= 3]
                 if ops:
-                    end = al.dest_start + ops[-1].dest_end
+                    start, end = al.dest_start + ops[0].dest_start, al.dest_start + ops[-1].dest_end
             at = a + max(al.dest_start, end - 1)
-        return bisect_right(self.starts, at) - 1, al.score
+        return bisect_right(self.starts, at) - 1, al.score, (a + start, a + max(start + 1, end))
 
     def _too_fast(self, idx: int) -> bool:
         """현재 위치 → idx 사이 대사를, 마지막 확인 뒤 지난 시간 동안 사람이 다 말할 수 없었나."""
@@ -206,16 +238,28 @@ class Aligner:
         need = (self.syl[idx] - self.syl[self.pos + 1]) / self.pace
         return self.clock - self.at < need
 
-    def update(self, text: str, end: float | None = None) -> Step:
-        """인식 글자 하나를 반영. end = 그 글자 소리의 끝 시각 (초). 안 주면 한 번에 1초씩 흐른 것으로 본다."""
+    def update(self, text: str, end: float | None = None, start: float | None = None,
+               loud: bool | None = None) -> Step:
+        """인식 글자 하나를 반영. end / start = 그 조각 소리의 끝 / 시작 시각 (초). end 를 안 주면 한 번에 1초씩
+        흐른 것으로 본다. start 를 안 주면 앞 결과와 소리가 겹치지 않는 것으로 본다 (대사 입력 · 스트리밍 · 시험처럼
+        결과 하나가 따로 들은 말일 때). 겹쳐 보내는 조각 방식은 파이프라인이 조각 시작 시각을 넘긴다.
+        loud = 그 조각 소리가 컸나 (말소리 크기). 빈 결과가 인식 끊김인지 배우가 쉰 것인지 가르는 데 쓴다."""
         end = self.clock + 1.0 if end is None else end
+        self.chunk_start = end if start is None else start
         dt, self.clock = max(0.0, end - self.clock), end
         if self.pending_sec:   # 오래된 큰 이동 후보는 버린다 (한참 뒤 엉뚱한 말 한 번으로 튀지 않게)
             self.pending = [p for p in self.pending if end - p[1] <= self.pending_sec]
+            self.back_cands = [p for p in self.back_cands if end - p[1] <= self.pending_sec]
         t = to_jamo(text)
+        if self.echo_filter:
+            t, dumped = self._strip_echo(t)
+            if dumped:
+                self.stale += 1
+                return Step("skip", self.current)   # 힌트를 통째로 베낌: 들은 말로 쓰지 않음
+        self._check_new_line(t)
         if len(t) < self.min_jamo:
             self.stale += 1
-            self.gaps.append((end, dt))
+            self.gaps.append((end, dt, loud))
             return Step("skip", self.current)
         self.stale += 1
         self.recent.append(t)
@@ -224,17 +268,17 @@ class Aligner:
         lo = max(0, self.pos - self.back)
         near_hi = min(len(self.items), far + self.ahead + self.widen * (self.stale - 1) + 1)
         if self.lost:   # 공연은 대체로 앞으로 가므로 현재 위치 조금 앞부터 끝까지
-            idx, score = (-1, 0.0)
+            idx, score, span = -1, 0.0, None
             if self.near_first:   # 반복 후렴 · 같은 대사가 있으면 가까운 쪽을 먼저
-                idx, score = self._search(t, lo, near_hi)
+                idx, score, span = self._search(t, lo, near_hi)
             if score < self.accept:
-                idx, score = self._search(t, lo, max(near_hi, self.lost_hi[self.pos]))
+                idx, score, span = self._search(t, lo, max(near_hi, self.lost_hi[self.pos]))
         else:
-            idx, score = self._search(t, lo, near_hi)
+            idx, score, span = self._search(t, lo, near_hi)
         if self.prefer_near and not 0 <= idx - self.pos <= self.small_step:
-            n_idx, n_score = self._search(t, self.pos, min(len(self.items), self.pos + self.small_step + 1))
+            n_idx, n_score, n_span = self._search(t, self.pos, min(len(self.items), self.pos + self.small_step + 1))
             if n_score >= score:      # 가까운 곳도 똑같이 맞음 (같은 대사가 두 번) → 가까운 쪽
-                idx, score = n_idx, n_score
+                idx, score, span = n_idx, n_score, n_span
         cand = self.items[idx]
         if score < self.accept:
             self.miss += 1
@@ -244,15 +288,17 @@ class Aligner:
         d = idx - self.pos
         fast = self._too_fast(idx)
         if 0 <= d <= self.small_step:   # 자연스러운 진행
-            return self._move(idx, score, cand)
+            return self._move(idx, score, cand, span)
         # 큰 이동(뒤로 가거나 많이 건너뜀): 대기 후보와 같은 곳이거나 그 바로 뒤로 이어지면 인정.
         # 말할 수 없는 빠르기로 건너뛰면 한 번 더. 멀리 앞으로는 따라잡기일 때만
         self.pending = [p for p in self.pending if -1 <= idx - p[0] <= self.small_step + 1] + [(idx, end)]
+        if d < 0:                       # 앞 줄로 돌아갈 후보는 따로 기억 (반복 확인, repeat_confirm)
+            self.back_cands.append((idx, end))
         if self.far and d > self.far and not self._caught_up(idx):
             return Step("pending", self.current, score, cand)
         if (d > 0 and not fast and score >= self.strong and len(t) >= self.strong_jamo) \
                 or len(self.pending) >= self.confirm + fast:   # 긴 문장이 확실히 맞음 / 확인됨
-            return self._move(idx, score, cand)
+            return self._move(idx, score, cand, span)
         return Step("pending", self.current, score, cand)
 
     def _caught_up(self, idx: int) -> bool:
@@ -272,7 +318,7 @@ class Aligner:
     @property
     def quiet(self) -> float:
         """최근 quiet_sec 초 동안 인식 글자가 없던 시간 (초)."""
-        return sum(dt for e, dt in self.gaps if self.clock - e < self.quiet_sec)
+        return sum(dt for e, dt, _ in self.gaps if self.clock - e < self.quiet_sec)
 
     def _texts(self, since: float) -> list[str]:
         """since 초 뒤에 끝난 인식 자모 (같은 글자는 한 번)."""
@@ -287,25 +333,125 @@ class Aligner:
         heard = [c for c in self.items[lo:idx + 2] if len(c.jamo) >= self.min_jamo and _covered(c.jamo, texts) >= HEARD_PART]
         return sum(len(c.jamo) for c in heard), len(heard)
 
-    def _move(self, idx: int, score: float, cand: Cue) -> Step:
-        prev = self.pos
-        again = idx < prev and idx in self.heard
+    def _move(self, idx: int, score: float, cand: Cue, span: tuple[int, int] | None = None) -> Step:
+        prev, since = self.pos, self.at
+        again = (idx < prev and idx in self.heard) or self._repeat_confirmed(span, prev)
+        if again:
+            self.back_cands = []
+        self._mark_seen(span, again)
+        if idx != prev:
+            self.suspect.discard(idx)          # 다시 그 줄로 왔으면 새 근거로 다시 판단 (반복으로 되돌아온 줄 등)
+        new_line = idx > prev and idx not in self.heard
         self.pos, self.pending, self.stale, self.at = idx, [], 0, self.clock
         if idx - prev > self.far:     # 따라잡았으면 그 끊김은 다 썼음
             self.gaps.clear()
         skipped = []
+        if self.end_check and idx > prev and prev in self.suspect and self.items[prev].type == "dialogue":
+            skipped.append(self.items[prev])  # 지금 줄로 넘어온 근거가 힌트 베끼기였음: 그 줄도 안 들린 것
         got = "".join(self.recent)
         for i in range(prev + 1, idx):        # 지나친 큐: 최근 인식 글자에 비슷한 부분이 있으면 들은 것으로
             c = self.items[i]
             if len(c.jamo) < self.min_jamo:   # 너무 짧은 큐는 판단 안 함
                 continue
-            if fuzz.partial_ratio(c.jamo, got) >= self.heard_score:
+            if i not in self.suspect and fuzz.partial_ratio(c.jamo, got) >= self.heard_score:
                 if idx - prev <= self.small_step:   # 크게 건너뛴 이동은 잘못 튄 것일 수 있어 지나친 큐를 기억하지 않음
                     self.heard.add(i)
             elif c.type == "dialogue":
                 skipped.append(c)
+        if skipped and self.dropout_guard and self._dropout_covers(skipped, since):
+            skipped = []                      # 인식이 비어 있던 동안 말했을 수 있음: 누락으로 안 셈
         self.heard.add(idx)
+        if self.end_check and new_line:
+            self.check_end = (idx, self.clock)
         return Step("move" if idx != prev else "stay", self.current, score, cand, tuple(skipped), again)
+
+    def _check_new_line(self, t: str):
+        """지난번에 새로 넘어간 줄을, 소리가 겹치는 이번 조각 글자로 확인한다 (end_check). 빈 결과면 다음 조각까지 기다리고,
+        이번 조각이 그 조각과 END_OVERLAP 초 넘게 겹치지 않으면 판단하지 않는다."""
+        if self.check_end is None:
+            return
+        line, at = self.check_end
+        if self.chunk_start > at - END_OVERLAP + 1e-6:   # 그 조각과 조금만 겹치면 그 줄이 이미 지나갔을 수 있음
+            self.check_end = None
+            return
+        if len(t) < self.min_jamo:
+            return
+        self.check_end = None
+        if fuzz.partial_ratio(self.items[line].jamo, t) < self.heard_score:
+            self.suspect.add(line)
+            self.heard.discard(line)
+
+    def _dropout_covers(self, skipped: list[Cue], since: float | None) -> bool:
+        """안 들린 대사를, since(마지막으로 위치를 확인한 때) 뒤 인식 글자가 없던 시간 동안 사람이 다 말할 수 있었나
+        (pace 음절/초). 위치를 한 번도 확인하기 전(공연 시작 전 무음)은 보지 않는다."""
+        if not self.pace or since is None:
+            return False
+        syl = sum(len(re.findall(r"[가-힣]", c.text)) for c in skipped)
+        quiet = sum(dt for e, dt, loud in self.gaps if e > since and loud)
+        return quiet >= syl / self.pace
+
+    def _reversed_lines(self, t: str) -> list[int]:
+        """근처 대사(지나간 줄 ~ 다음 줄) 중 원문 그대로(자모가 통째로) 들어 있는 줄을 글자 속 순서대로. 대본을 거슬러 가는
+        곳이 없으면 빈 목록."""
+        lo, hi = max(0, self.pos - self.hint_back - 1), min(len(self.items), self.pos + 5)
+        found = sorted((t.find(c.jamo), i) for i, c in enumerate(self.items[lo:hi], lo)
+                       if len(c.jamo) >= self.min_jamo and c.jamo in t)
+        lines = [i for _, i in found]
+        return lines if any(b < a for a, b in zip(lines, lines[1:])) else []
+
+    def _strip_echo(self, t: str) -> tuple[str, bool]:
+        """힌트 베끼기 거르기 (echo_filter). 근처 대사가 원문 그대로 대본을 거슬러 가는 순서로 들어 있으면 힌트를 이어 붙여
+        베낀 것으로 보고, 먼저 아직 안 온 줄(지금 줄 뒤)의 원문을 지운다 (진짜 말에 다음 대사 힌트가 붙어 나온 경우는
+        진짜 말만 남음). 남은 글자에도 원문 두 줄 넘게 거꾸로 들어 있으면 통째로 베낀 것: (글자, True).
+        예: 지금 줄 56 에서 56 · 55 · 53번 원문이 힌트 순서대로 나옴 → 통째로 버림
+            지금 줄 28 에서 29 · 30 · 27번 원문 순서로 나옴 (27번으로 되돌아감) → 29 · 30 을 지우고 27 만 남김"""
+        if len(t) < 2 * self.min_jamo:
+            return t, False
+        lines = self._reversed_lines(t)
+        if not lines:
+            return t, False
+        for i in lines:
+            if i > self.pos:
+                t = t.replace(self.items[i].jamo, "")
+        return t, len(self._reversed_lines(t)) >= 2
+
+    def _repeat_confirmed(self, span: tuple[int, int] | None, prev: int) -> bool:
+        """앞 줄로 돌아갈 후보가 있는데, 이번 말이 그 앞 줄에서 시작해 지금 줄로 이어지거나 지금 줄을 처음부터 다시 한다
+        (지금 줄을 마지막으로 들은 조각과 소리가 안 겹치는 조각에서)."""
+        if not self.repeat_confirm or span is None or prev not in self.seen:
+            return False
+        cands = [p for p, _ in self.back_cands if p < prev and self.items[p].type == "dialogue" and p in self.heard]
+        if not cands:
+            return False
+        first, last_end, far = self.seen[prev]
+        if self.chunk_start < last_end - 1e-6:
+            return False
+        line = bisect_right(self.starts, span[0]) - 1
+        if min(cands) <= line < prev:        # 앞 줄에서 시작해 지금 줄로 이어짐
+            # 돌아갈 줄을 지금 줄보다 먼저 들었어야 함. 두 줄을 한 조각에서 처음 같이 들었으면 힌트를 베껴 앞질러 간 것일
+            # 수 있다 (노래 끝에 다음 대사 두 줄이 붙어 나온 뒤 배우가 그 두 줄을 차례로 말함: 잘못된 반복 알림)
+            return span[1] > self.starts[prev] and any(self.seen.get(p, (0.0,))[0] < first for p in cands)
+        # 지금 줄을 처음부터 다시: 긴 줄의 앞부분만 다시 들릴 때만. 짧은 줄은 한 조각에 통째로 들어가서, 늦게 인식된
+        # 같은 말이나 힌트를 베낀 글자도 '다시 함'처럼 보인다 (원본 녹음 잘못된 반복 알림)
+        c = self.items[prev]
+        n = len(c.jamo)
+        head = span[0] - self.starts[prev]
+        return (line == prev and c.type == "dialogue" and n >= RESTART_JAMO and head <= 0.25 * n
+                and span[1] - self.starts[prev] <= 0.7 * n and far >= 0.6 * n)
+
+    def _mark_seen(self, span: tuple[int, int] | None, restart: bool):
+        """맞은 구간이 걸친 줄마다 처음 · 마지막으로 들은 조각의 끝 시각과 가장 먼 위치를 적는다. 반복이면 그 줄부터 새로 센다."""
+        if span is None:
+            return
+        first = bisect_right(self.starts, span[0]) - 1
+        last = bisect_right(self.starts, span[1] - 1) - 1
+        if restart:
+            for i in [k for k in self.seen if k >= first]:
+                del self.seen[i]
+        for i in range(first, last + 1):
+            far = min(span[1], self.starts[i] + len(self.items[i].jamo)) - self.starts[i]
+            first_end, _, old = self.seen.get(i, (self.clock, 0.0, 0))
+            self.seen[i] = (first_end, self.clock, max(old, far))
 
 
 def _covered(jamo: str, texts: list[str]) -> float:

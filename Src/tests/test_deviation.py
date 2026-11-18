@@ -218,3 +218,11 @@ def test_deviation_metrics_match_alerts_to_truth(sample_cues):
     assert a["found"] and a["delay"] == 5.0 and a["ret_time"] == 2.0 and a["type_ok"] and a["ret_ok"]
     assert s["found"] and s["delay"] == 3.0 and s["type_ok"] and s["ret_ok"]
     assert len(res["false"]) == 1 and res["false"][0]["t0"] == 70.0
+
+
+def test_repeat_while_staying_on_the_line():
+    """추적기가 같은 줄에 머물러도 반복이 확인되면(Step.again, repeat_confirm) 반복 알림."""
+    d = DeviationDetector()
+    d.update(move(5), 5, 0)
+    alert = d.update(Step("stay", Cue(5, 5, "dialogue", "", "x"), 90, again=True), 5, 1500)
+    assert alert.deviation_type == "repeat" and alert.return_cue_id == 5
