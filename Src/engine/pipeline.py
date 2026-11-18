@@ -40,6 +40,17 @@ class TypedInput(STTEngine):
     mode = "text"
 
 
+def is_loud(seg: np.ndarray, db: float = -35.0, part: float = 0.5) -> bool:
+    """조각 소리가 말소리만큼 컸나: 30ms 단위 소리 크기가 db(dBFS)를 넘는 비율이 part 이상.
+    빈 인식 결과가 인식 끊김(소리 큼)인지 배우가 쉰 것(조용함)인지 가르는 데 쓴다 (원본 녹음 끊김 -21 ~ -24dBFS, 쉼 -40dBFS)."""
+    n = len(seg) // 480 * 480
+    if n == 0:
+        return False
+    f = np.asarray(seg[:n], dtype=np.float32).reshape(-1, 480)
+    level = 20 * np.log10(np.sqrt((f * f).mean(axis=1)) + 1e-9)
+    return bool((level > db).mean() >= part)
+
+
 def implausible(text: str, prev: str, dur_sec: float) -> bool:
     """정렬기에 넣기 전 걸러내기: 너무 빠른 말 · 직전과 똑같은 글자 · 같은 말 3번 이상 반복."""
     syllables = len(re.findall(r"[가-힣]", text))
@@ -148,10 +159,11 @@ class Pipeline:
     def _hint_texts(self) -> list[str] | None:
         return [c.text for c in self._hint_cues()] or None
 
-    def _handle(self, text: str, audio_end: float, transcript: str | None = None):
+    def _handle(self, text: str, audio_end: float, transcript: str | None = None, start: float | None = None,
+                loud: bool | None = None):
         """인식 글자 하나를 정렬기 · 이탈 감지에 넣고 화면 메시지를 보낸다. audio_end = 그 소리의 끝 시각."""
         with self.lock:
-            step = self.aligner.update(text, audio_end)
+            step = self.aligner.update(text, audio_end, start, loud)
             song = self._segment() == "song"
             alert = self.detector.update(step, self.aligner.pos, int(time.time() * 1000), hold=song)
         if step.heard:
@@ -256,7 +268,7 @@ class Pipeline:
         else:
             with self.lock:
                 self.fail_streak = 0
-        rec.update(text=text, proc_sec=round(time.perf_counter() - t0, 3),
+        rec.update(text=text, proc_sec=round(time.perf_counter() - t0, 3), loud=is_loud(seg),
                    **getattr(self.stt, "request_info", dict)())
         return text
 
@@ -287,7 +299,7 @@ class Pipeline:
         text = "" if implausible(raw, self.prev_text, self.chunk_sec) else raw
         self.prev_text = raw
         self.newest = max(self.newest, rec["chunk_end"])
-        self._handle(text, rec["chunk_end"], raw)
+        self._handle(text, rec["chunk_end"], raw, rec["chunk_start"], rec.get("loud"))
 
     # ── 스트리밍 ────────────────────────────────────────────
     def _stream_loop(self):

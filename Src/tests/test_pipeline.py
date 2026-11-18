@@ -294,3 +294,15 @@ def test_repeated_recognition_failures_are_reported_once(sample_cues, silence):
     errors = of(msgs, "engine.error")
     assert len(errors) == 1 and errors[0]["during"] == "recognize"
     assert f"{FAIL_ALERT_AFTER}번" in errors[0]["message"] and "network down" in errors[0]["message"]
+
+
+def test_is_loud():
+    """빈 인식 결과가 인식 끊김(소리 큼)인지 배우가 쉰 것(조용함)인지 가르는 소리 크기."""
+    import numpy as np
+
+    from engine.pipeline import is_loud
+
+    t = np.arange(16000) / 16000
+    assert is_loud((0.3 * np.sin(2 * np.pi * 220 * t)).astype("float32"))       # 약 -13dBFS
+    assert not is_loud((0.005 * np.sin(2 * np.pi * 220 * t)).astype("float32"))  # 약 -49dBFS
+    assert not is_loud(np.zeros(100, dtype="float32"))

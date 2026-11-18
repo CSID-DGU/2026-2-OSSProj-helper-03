@@ -66,7 +66,7 @@ def replay(cues, records, kw) -> list[tuple[float, int]]:
         text = "" if implausible(raw, prev_raw, r["chunk_end"] - r["chunk_start"]) else raw
         prev_raw = raw
         before = al.current.id
-        al.update(text, r["chunk_end"])
+        al.update(text, r["chunk_end"], r["chunk_start"], r.get("loud"))
         if al.current.id != before:
             timeline.append((r["chunk_end"] + r.get("proc_sec", 0.0), al.current.id))
     return timeline
@@ -100,7 +100,7 @@ def live(cues, audio_path, args, kw) -> tuple[list[tuple[float, int]], list[dict
         text = "" if implausible(raw, prev_raw, min(args.chunk, end)) else raw
         prev_raw = raw
         before = al.current.id
-        al.update(text, end)
+        al.update(text, end, max(0.0, end - args.chunk))
         if al.current.id != before:
             timeline.append((end + proc, al.current.id))
         end += hop

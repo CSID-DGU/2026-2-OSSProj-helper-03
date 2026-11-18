@@ -306,3 +306,94 @@ def test_line_end_with_extra_words_stays_on_the_line():
     old = Aligner(cues, start_id=3, anchor="end")      # 예전: 맞은 구간 끝이 다음 줄 첫 글자로 넘쳐 미리 넘어감
     old.update("자막을 따라서 자막을 띄우는 것까지 했습니다.")
     assert old.current.id == 4
+
+
+# 8차: 힌트 베끼기 · 인식 끊김 (실제 파이프라인처럼 조각 시작 · 끝 시각을 넘김)
+
+def test_hint_dump_in_reverse_order_is_ignored(sample_cues):
+    """지금 줄과 지나간 줄이 원문 그대로 거꾸로 이어 붙은 결과는 힌트를 통째로 베낀 것: 들은 말로 쓰지 않는다 (echo_filter)."""
+    lines = dialogue(sample_cues)
+    al = Aligner(sample_cues, start_id=lines[5].id)
+    step = al.update(lines[5].text + " " + lines[4].text, 3.0, 0.0)
+    assert step.status == "skip" and al.current.id == lines[5].id
+    off = Aligner(sample_cues, start_id=lines[5].id, echo_filter=0)
+    assert off.update(lines[5].text + " " + lines[4].text, 3.0, 0.0).matched
+
+
+def test_upcoming_hint_lines_are_stripped_from_a_real_repeat(sample_cues):
+    """다음 대사 힌트 원문이 진짜 말(지나간 줄)과 섞여 나오면 다음 대사만 지운다: 지나간 줄로 돌아갈 후보가 남는다."""
+    lines = dialogue(sample_cues)
+    al = Aligner(sample_cues, start_id=lines[5].id)
+    step = al.update(lines[7].text + " " + lines[8].text + " " + lines[3].text, 3.0, 0.0)
+    assert step.cand.id == lines[3].id and al.current.id == lines[5].id
+
+
+def test_new_line_missing_from_the_next_chunk_counts_as_skipped(sample_cues):
+    """새 줄로 넘어간 근거가 조각 끝 한 번뿐이고 소리가 겹치는 다음 조각에 그 줄이 없으면, 힌트 베끼기로 보고 안 들린 줄로 센다
+    (end_check, 누락 A1: 잘린 줄을 힌트에서 베껴 적어 안 들린 줄이 하나로 세어지던 것)."""
+    lines = dialogue(sample_cues)
+
+    def run(**kw):
+        al = Aligner(sample_cues, **kw)
+        al.update(lines[0].text, 3.0, 0.5)
+        al.update(lines[0].text + " " + lines[1].text, 8.0, 5.5)   # 1번은 베낀 글자
+        return al.update(lines[3].text, 9.0, 6.5)                   # 겹치는 다음 조각: 1번이 없음
+
+    assert [c.id for c in run().skipped] == [lines[1].id, lines[2].id]
+    assert [c.id for c in run(end_check=0).skipped] == [lines[2].id]
+
+
+def test_recognition_dropout_while_loud_is_not_a_skip(sample_cues):
+    """소리가 컸는데 빈 결과가 이어진 동안 지나친 줄은 누락으로 세지 않는다 (dropout_guard). 조용했으면(배우가 쉼) 누락."""
+    lines = dialogue(sample_cues)
+
+    def run(loud):
+        al = Aligner(sample_cues)
+        al.update(lines[0].text, 3.0, 0.0)
+        for k in range(4):                                          # 빈 결과 4번 (4초)
+            al.update("", 4.0 + k, 1.0 + k, loud=loud)
+        return al.update(lines[3].text, 8.0, 5.0)
+
+    assert run(loud=True).skipped == ()
+    assert [c.id for c in run(loud=False).skipped] == [lines[1].id, lines[2].id]
+
+
+def test_restarting_a_long_line_after_a_back_candidate_is_again(sample_cues):
+    """앞 줄로 돌아갈 후보가 나온 뒤, 끝까지 들었던 긴 줄을 소리가 안 겹치는 조각에서 처음부터 다시 하면 반복 (repeat_confirm, A4).
+    돌아갈 후보가 없으면 같은 줄을 다시 들어도 반복으로 보지 않는다 (지금 줄 힌트 베끼기일 수 있음)."""
+    lines = dialogue(sample_cues)
+    head = lines[1].text.split(".")[0]                              # '그래도 문은 열어 두자' (긴 줄의 앞부분)
+
+    def run(back):
+        al = Aligner(sample_cues)
+        al.update(lines[0].text, 3.0, 0.0)
+        al.update(lines[1].text, 6.0, 3.0)
+        if back:
+            al.update(lines[0].text, 9.0, 6.0)                      # 앞 줄로 돌아갈 후보
+        return al, al.update(head, 12.0, 9.0)
+
+    al, step = run(back=True)
+    assert step.status == "stay" and step.again and al.current.id == lines[1].id
+    assert not run(back=False)[1].again
+
+
+def test_crossing_into_the_line_is_again_only_if_the_back_line_came_first(sample_cues):
+    """돌아갈 후보 뒤 앞 줄 끝에서 지금 줄로 이어 말하면 반복. 단 두 줄을 한 조각에서 처음 같이 들었으면(힌트를 베껴
+    앞질러 갔을 수 있음) 배우가 그 두 줄을 처음 차례로 말하는 것일 수 있어 반복으로 보지 않는다."""
+    lines = dialogue(sample_cues)
+    tail = lines[1].text.split(". ")[1] + " " + lines[2].text     # 1번 끝부분 + 2번
+
+    def run(together):
+        al = Aligner(sample_cues)
+        al.update(lines[0].text, 3.0, 0.0)
+        if together:
+            al.update(lines[1].text + " " + lines[2].text, 6.0, 3.0)
+        else:
+            al.update(lines[1].text, 6.0, 3.0)
+            al.update(lines[2].text, 9.0, 6.0)
+        al.update(lines[1].text, 12.0, 9.0)                        # 1번으로 돌아갈 후보
+        return al, al.update(tail, 15.0, 12.0)
+
+    al, step = run(together=False)
+    assert step.again and al.current.id == lines[2].id
+    assert not run(together=True)[1].again

@@ -124,7 +124,7 @@ class DeviationDetector:
         alert = None
         if self.deviating:
             if self.skip_min:
-                kind = "skip" if skipped else "repeat" if d < 0 else "adlib"
+                kind = "skip" if skipped else "repeat" if d < 0 or step.again else "adlib"
             else:                               # 1차 방식: 이동 거리만으로
                 kind = "skip" if d >= 2 else "repeat" if d < 0 else "adlib"
             alert = Alert(kind, self.since, step.cue.id)
@@ -137,7 +137,7 @@ class DeviationDetector:
                 alert = Alert("skip", since, step.cue.id)
             elif skipped:
                 log.info("큰 이동 %d큐 (안 들린 대사 %d개): 알림 없음", d, len(step.skipped))
-            elif self.repeat and d < 0 and step.again and not hold:
+            elif self.repeat and d <= 0 and step.again and not hold:   # 같은 줄에 머물러도 반복이 확인되면 (repeat_confirm)
                 alert = Alert("repeat", since, step.cue.id)
         if alert:
             log.info("이탈 %s: 복귀 #%s (%d큐 이동)", alert.deviation_type, alert.return_cue_id, d)
