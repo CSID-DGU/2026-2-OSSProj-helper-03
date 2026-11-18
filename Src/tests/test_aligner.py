@@ -39,8 +39,11 @@ def test_jump_to_and_hints(sample_cues):
     al = Aligner(sample_cues)
     target = dialogue(sample_cues)[5]
     assert al.jump_to(target.id)
+    lines = dialogue(sample_cues)
     hints = al.hint_cues(3)
-    assert hints[0].id == target.id and len(hints) == 4
+    # 현재 + 다음 3줄, 그다음 지나간 2줄 (가까운 것부터)
+    assert [c.id for c in hints] == [c.id for c in lines[5:9]] + [lines[4].id, lines[3].id]
+    assert [c.id for c in Aligner(sample_cues, hint_back=0, start_id=target.id).hint_cues(3)] == [c.id for c in lines[5:9]]
 
 
 def test_text_spanning_cues_moves_to_the_later_one(sample_cues):
