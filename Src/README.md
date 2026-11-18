@@ -18,7 +18,7 @@ Src/
 │   └── pipeline         ②~⑤ 연결 (재생 · 인식 · 상태 스레드)
 ├── server/          로컬 서버 (FastAPI, WebSocket ws://localhost:8000/ws). 인터넷에 올리는 방법은 DEPLOY.md
 ├── ui/              보조 화면 (React, Vite, TypeScript)
-├── eval/            성능 측정 (정답 라벨로 ±1큐 정확도 · 도달 지연)
+├── eval/            성능 측정 (정답 라벨로 ±1큐 정확도 · 도달 지연, suite.py 는 고정 시험 세트를 한 번에 돌려 표로)
 ├── tools/           convert_cues.py (큐 CSV → 화면 형식)
 └── tests/           테스트 (pytest)
 ```
