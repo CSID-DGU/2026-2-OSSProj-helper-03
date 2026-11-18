@@ -46,6 +46,15 @@
   구간이 다음 줄 첫 글자까지 넘쳐 줄을 다 말한 순간 다음 줄로 넘어갔다. 그 뒤 애드리브가 오면 말하지 않은 다음 줄이 계속 보였다.
   마이크 발표 시험 4번 모두 애드리브 동안 제자리. 저장 기록 5벌 정확도 −0.1 ~ −1.1점 (미리 넘어간 것이 우연히 ±1큐에 맞던 몫),
   도달 지연 중앙값 · 이탈 감지는 그대로. HELPER_ALIGN=anchor=end 면 예전과 같음
+7차 (반복 · 누락 감지 보완, #39):
+- 대본 힌트에 지나간 hint_back(2)줄도 넣는다. 힌트가 현재 + 다음 3줄뿐이라 소리가 애매하면 음성인식이 다음 줄을
+  그대로 베꼈고(누락 A3: 잘린 27 · 28번을 적어서 들은 것으로 처리), 배우가 되돌아가 말한 줄은 힌트에 없어 빈 결과가
+  나왔다(반복 B1). 실시간 측정(이탈 녹음 2개 + 원본 2번, 11/18): 이탈 9건 중 7 → 8건, 유형 맞음 6 → 8,
+  잘못된 알림 14.6분에 1 → 0건. dev_a 를 한 번 더 재도 같았다 (A3 은 힌트가 퍼져서 다음 줄을 덜 베낌).
+  원본 ±1큐 정확도 평균 87.4 → 87.7%, 도달 p90 4.7 → 3.9초. 남은 A4 는 되돌아간 줄을 힌트에 넣어도 음성인식이 빈 결과
+- 해 봤지만 뺀 것: 끝까지 들었던 줄을 겹치지 않는 조각에서 처음부터 다시 들으면 반복으로 보기 (A4 는 잡지만 노래 ·
+  침묵 구간에서 지금 줄 힌트를 베낀 글자에 걸려 잘못된 반복 알림이 11분에 14건), 지나친 줄은 겹치는 두 조각에서 들려야
+  들은 것으로 보기 (줄이 조각 맨 앞에 걸리고 앞 조각이 빈 결과면 정상도 한 번만 들려서 잘못된 누락 알림 · 반복을 놓침)
 """
 import inspect
 import re
@@ -94,7 +103,8 @@ class Aligner:
                  min_jamo=6, accept=65.0, back=3, ahead=15, small_step=4, confirm=2, lost_after=3,
                  strong=85.0, strong_jamo=10, anchor="matched", widen=0, near_first=1,
                  scene_limit=1, lost_window=30, recent=3, heard_score=60.0, prefer_near=1,
-                 pending_sec=9.0, pace=8.0, far=4, far_jamo=40, far_lines=2, quiet_sec=30.0, quiet_part=0.5):
+                 pending_sec=9.0, pace=8.0, far=4, far_jamo=40, far_lines=2, quiet_sec=30.0, quiet_part=0.5,
+                 hint_back=2):
         self.items = [c for c in cues if c.type in track_types and c.jamo]
         if not self.items:
             raise ValueError("추적할 큐(대사·가사)가 없습니다.")
@@ -125,6 +135,7 @@ class Aligner:
         self.quiet_sec = quiet_sec      # 인식 글자가 없던 시간을 최근 이만큼(초)만 센다
         self.quiet_part = quiet_part    # 끊긴 시간으로 따라잡을 때는 far_jamo 의 이만큼만 들으면 됨
         self.gaps: deque[tuple[float, float]] = deque(maxlen=64)   # 인식 글자가 없던 조각 (소리 끝 시각, 길이)
+        self.hint_back = int(hint_back)  # 대본 힌트에 넣을 지나간 줄 수 (반복한 줄을 알아듣게)
         self.clock = 0.0              # 마지막 인식 글자의 소리 끝 시각
         self.at: float | None = None  # 마지막으로 위치를 확인한 소리 시각
         self.stale = 0                # 마지막으로 위치를 확인한 뒤 지난 인식 횟수 (빈 결과 포함)
@@ -165,10 +176,12 @@ class Aligner:
         return [n] * n
 
     def hint_cues(self, n_next: int = 3) -> list[Cue]:
-        """대본 힌트: 현재 큐 + 다음 n 큐. 놓친 상태에서는 힌트에 묶이지 않게 비운다."""
+        """대본 힌트: 현재 큐 + 다음 n 큐 + 지나간 hint_back 큐. 놓친 상태에서는 힌트에 묶이지 않게 비운다.
+        지나간 줄은 가까운 것부터 맨 뒤에 둔다 (구문 힌트 개수 제한에 걸리면 지나간 줄부터 빠짐)."""
         if self.lost:
             return []
-        return self.items[self.pos:self.pos + 1 + n_next]
+        back = self.items[max(0, self.pos - self.hint_back):self.pos]
+        return self.items[self.pos:self.pos + 1 + n_next] + back[::-1]
 
     def _search(self, t: str, lo: int, hi: int) -> tuple[int, float]:
         a = self.starts[lo]
