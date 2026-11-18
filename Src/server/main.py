@@ -154,8 +154,8 @@ def start_session(msg: dict, emit) -> Pipeline:
     log.info("큐 %s, %s, 음성인식 %s%s", cue_name, src, stt.label, f", 추적기 {align}" if align else "")
     pipe = Pipeline(cues, audio, stt, emit,
                     hints=env("HELPER_HINTS", "1") != "0",
-                    chunk_sec=env_float("HELPER_CHUNK_SEC", 3.0),
-                    hop_sec=env_float("HELPER_HOP_SEC", 0.0) or None,
+                    chunk_sec=env_float("HELPER_CHUNK_SEC", stt.chunk_sec),   # 비우면 음성인식 엔진의 권장값
+                    hop_sec=env_float("HELPER_HOP_SEC", stt.hop_sec) or None,
                     deviate_after=env_float("DEVIATE_AFTER_SEC", 3.0),
                     speed=speed, aligner_kw=align)
     record = open_session_log(str(msg.get("show_id") or ""))

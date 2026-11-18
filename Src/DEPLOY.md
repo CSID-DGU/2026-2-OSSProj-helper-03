@@ -36,11 +36,11 @@ Dockerfile에 기본값이 들어 있어서 보통은 접속 코드와 프로젝
 | `GOOGLE_APPLICATION_CREDENTIALS` | 키 파일 경로 | Render에서만 씀. Cloud Run은 비워 둠 (서비스 계정이 붙어 있음) |
 | `HELPER_STT` | `google` | 기본값 |
 | `HELPER_INPUTS` | `browser,text` | 기본값. 서버에 마이크와 녹음이 없으므로 브라우저 소리와 대사 입력만 받음 |
-| `HELPER_HOP_SEC` | `1.5` | 기본값. 3초 조각을 1.5초마다 보냄 |
+| `HELPER_CHUNK_SEC` / `HELPER_HOP_SEC` | 비움 | 음성인식 엔진 권장값을 씀 (google: 3초 조각을 1.5초마다) |
 | `HELPER_MAX_SESSION_SEC` | `600` | 기본값. 회차 1번에 10분까지 |
-| `HELPER_MAX_SESSIONS` | `3` | 기본값. 동시에 3회차까지 |
+| `HELPER_MAX_SESSIONS` | `2` | 기본값. 동시에 2회차까지 (Google US 인식 요청 한도가 프로젝트당 분당 201번이고, 회차 하나가 분당 80번을 씀) |
 | `HELPER_LOG_DIR` | `off` | 기본값. 회차 기록을 남기지 않음 |
-| `GOOGLE_STT_HEDGE` | 비움 | `2`로 하면 인식이 느릴 때 빨라지지만 비용이 2배 |
+| `GOOGLE_STT_HEDGE` | 비움 | 기본 2: 같은 요청을 2번 보내 먼저 온 답을 씀 (도달 지연 약 0.4초 줄고 비용 2배). `1`로 하면 비용 절반이고 동시에 4회차까지 됨 |
 
 ## 엔진 올리기 1. Google Cloud Run (추천)
 
@@ -149,13 +149,13 @@ gcloud run services update helper-engine --region asia-northeast3 --min-instance
 - 큐 파일: `id, order, type, speaker, text` 열이 있는 CSV (`Src/ui/mock/sample_cues.csv` 참고). 형식이 다르면 `Src/tools/convert_cues.py`로 바꿉니다.
 - 내 녹음 파일: wav, mp3, m4a처럼 브라우저가 열 수 있는 파일. 녹음을 틀면서 그 소리로 추적합니다.
 - 내 마이크: Chrome이나 Edge에서 처음에 마이크 사용을 허용해야 합니다.
-- 회차 1번에 10분까지, 동시에 3명까지 쓸 수 있습니다. 녹음이 끝나면 **회차 종료**를 눌러 주세요.
+- 회차 1번에 10분까지, 동시에 2명까지 쓸 수 있습니다. 녹음이 끝나면 **회차 종료**를 눌러 주세요.
 
 ## 비용과 주의할 점
 
 - 화면(Vercel)은 무료 플랜으로 충분합니다.
 - 엔진(Cloud Run)은 쉬다가 켜지는 방식이라 테스트 정도는 매달 무료 사용량 안에 들어갑니다. 다만 프로젝트에 결제 계정이 연결되어 있어야 합니다.
-- 돈이 실제로 나가는 곳은 음성인식(chirp_3)입니다. 보낸 소리 길이로 요금을 매기는데, 3초 조각을 1.5초마다 보내서 겹치므로 실제 소리의 약 2배가 사용량으로 잡힙니다.
+- 돈이 실제로 나가는 곳은 음성인식(chirp_3)입니다. 보낸 소리 길이로 요금을 매기고 요청마다 1초 단위로 올립니다. 3초 조각을 1.5초마다 보내서 겹치고, 같은 요청을 2번 보내 둘 다 청구되므로 실제 소리 1분에 약 4분이 사용량으로 잡힙니다 (요금표의 분당 0.016달러로 치면 공연 1시간에 약 3.8달러). `GOOGLE_STT_HEDGE=1`이면 절반입니다.
 - Google Cloud 콘솔의 **결제 > 예산 및 알림**에서 예산 알림을 걸어 둡니다.
 - 배포할 때마다 이미지가 Artifact Registry에 쌓입니다. 무료 저장 용량을 넘으면 지난 이미지를 지웁니다.
 - 테스트 기간이 끝나면 접속 코드를 바꾸거나 서비스를 멈춥니다 (Render는 Suspend, Cloud Run은 서비스 삭제).
@@ -167,11 +167,10 @@ gcloud run services update helper-engine --region asia-northeast3 --min-instance
 
 ```
 HELPER_STT=google
-HELPER_HOP_SEC=1.5
 HELPER_INPUTS=browser,text
 HELPER_ACCESS_CODE=test
 HELPER_MAX_SESSION_SEC=600
-HELPER_MAX_SESSIONS=3
+HELPER_MAX_SESSIONS=2
 HELPER_LOG_DIR=off
 ```
 

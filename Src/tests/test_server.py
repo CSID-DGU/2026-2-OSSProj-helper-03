@@ -133,3 +133,27 @@ def test_session_start_failure_is_shown_on_screen(monkeypatch):
         msg = ws.receive_json()
         assert msg["type"] == "engine.error" and msg["during"] == "session.start"
         assert "없는_대본.csv" in msg["message"]
+
+
+def test_session_uses_engine_chunk_defaults(monkeypatch):
+    """HELPER_CHUNK_SEC · HELPER_HOP_SEC 를 비우면 음성인식 엔진의 권장 조각 길이 · 간격을 쓴다 (.env 의 'X=' 도 비운 것으로)."""
+    from conftest import SAMPLE_CSV
+
+    class Paced(FakeSTT):
+        chunk_sec, hop_sec = 2.5, 1.0
+
+    monkeypatch.setattr(srv, "get_engine", lambda name: Paced([]))
+    monkeypatch.setenv("HELPER_CHUNK_SEC", "")
+    monkeypatch.delenv("HELPER_HOP_SEC", raising=False)
+    msg = {"show_id": "t", "cue_file": "c.csv", "cue_csv": SAMPLE_CSV.read_text(encoding="utf-8"), "input": "browser"}
+    pipe = srv.start_session(msg, lambda m: None)
+    try:
+        assert (pipe.chunk_sec, pipe.hop_sec) == (2.5, 1.0)
+    finally:
+        pipe.stop()
+    monkeypatch.setenv("HELPER_HOP_SEC", "2")
+    pipe = srv.start_session(msg, lambda m: None)
+    try:
+        assert (pipe.chunk_sec, pipe.hop_sec) == (2.5, 2.0)
+    finally:
+        pipe.stop()

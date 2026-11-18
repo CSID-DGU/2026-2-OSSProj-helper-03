@@ -72,8 +72,17 @@ def test_hedge_env(monkeypatch):
     monkeypatch.setenv("GOOGLE_STT_HEDGE", "2")
     eng = GoogleEngine()
     assert eng.hedge == 2 and eng.label.endswith("x2")
-    monkeypatch.setenv("GOOGLE_STT_HEDGE", "")
+    monkeypatch.setenv("GOOGLE_STT_HEDGE", "1")
     assert GoogleEngine().hedge == 1
+    monkeypatch.setenv("GOOGLE_STT_HEDGE", "")      # 비우면 기본값 2 (#40)
+    assert GoogleEngine().hedge == 2
+
+
+def test_default_chunk_and_stream_hedge():
+    from engine.stt.google import GoogleStreamEngine
+
+    assert (GoogleEngine.chunk_sec, GoogleEngine.hop_sec) == (3.0, 1.5)
+    assert GoogleStreamEngine.hedge == 1      # 스트리밍은 같은 요청을 여러 번 보내지 않음
 
 
 def test_check_without_key_file(monkeypatch):
