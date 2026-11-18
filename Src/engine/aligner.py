@@ -73,7 +73,6 @@
   원본 녹음 22벌 76분 잘못된 알림 11 → 8건, ±1큐 정확도 평균 87.3 → 87.4%, 도달 지연 그대로
 """
 import inspect
-import re
 from bisect import bisect_right
 from collections import deque
 from dataclasses import dataclass
@@ -82,7 +81,7 @@ from itertools import accumulate
 from rapidfuzz import fuzz
 from rapidfuzz.distance import Indel, Levenshtein
 
-from .cue_loader import TRACK_TYPES, Cue, to_jamo
+from .cue_loader import TRACK_TYPES, Cue, syllables, to_jamo
 
 # 먼 이동 근거: 대사 자모 중 인식 글자와 HEARD_BLOCK 자모 넘게 이어서 같은 부분이 HEARD_PART 넘으면 그 줄을 들은 것으로.
 # 실제 인식 기록에서 말한 대사는 81% 가 넘고, 상관없는 대사는 대본에 같은 줄이 또 있을 때(1.9%)만 넘었다
@@ -134,7 +133,7 @@ class Aligner:
             s += len(c.jamo)
         self.text = "".join(c.jamo for c in self.items)
         # 큐까지 누적 음절 수 (지나친 대사를 말하는 데 드는 최소 시간 계산용)
-        self.syl = [0, *accumulate(len(re.findall(r"[가-힣]", c.text)) for c in self.items)]
+        self.syl = [0, *accumulate(syllables(c.text) for c in self.items)]
         self.min_jamo, self.accept = min_jamo, accept
         self.back, self.ahead, self.small_step = back, ahead, small_step
         self.confirm, self.lost_after = confirm, lost_after
@@ -386,7 +385,7 @@ class Aligner:
         (pace 음절/초). 위치를 한 번도 확인하기 전(공연 시작 전 무음)은 보지 않는다."""
         if not self.pace or since is None:
             return False
-        syl = sum(len(re.findall(r"[가-힣]", c.text)) for c in skipped)
+        syl = sum(syllables(c.text) for c in skipped)
         quiet = sum(dt for e, dt, loud in self.gaps if e > since and loud)
         return quiet >= syl / self.pace
 

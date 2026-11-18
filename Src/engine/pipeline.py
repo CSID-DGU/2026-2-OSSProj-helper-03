@@ -7,7 +7,6 @@
 대사 입력 테스트(TypedInput + TextSource)는 소리 · 음성인식 없이 화면이 보낸 글자를 인식 결과로 쓴다 (say).
 """
 import logging
-import re
 import threading
 import time
 from collections import deque
@@ -18,7 +17,7 @@ import numpy as np
 
 from .aligner import Aligner
 from .audio_input import FileSource, MicSource, TextSource
-from .cue_loader import Cue
+from .cue_loader import Cue, syllables
 from .deviation import START_TYPE, DeviationDetector
 from .protocol import deviation_alert, engine_error, input_status, position_update
 from .stt import STTEngine
@@ -53,8 +52,7 @@ def is_loud(seg: np.ndarray, db: float = -35.0, part: float = 0.5) -> bool:
 
 def implausible(text: str, prev: str, dur_sec: float) -> bool:
     """정렬기에 넣기 전 걸러내기: 너무 빠른 말 · 직전과 똑같은 글자 · 같은 말 3번 이상 반복."""
-    syllables = len(re.findall(r"[가-힣]", text))
-    if dur_sec and syllables > MAX_SYLLABLES_PER_SEC * dur_sec:
+    if dur_sec and syllables(text) > MAX_SYLLABLES_PER_SEC * dur_sec:   # 숫자는 읽는 소리로 셈
         return True
     if text and text == prev:
         return True
