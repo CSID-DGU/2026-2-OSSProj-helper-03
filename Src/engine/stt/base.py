@@ -17,6 +17,8 @@ class STTEngine:
     label = ""
     mode = "chunk"
     workers = 1    # 조각 방식에서 동시에 보낼 인식 요청 수 기본값 (로컬 모델은 CPU 를 나눠 쓰므로 1)
+    chunk_sec = 3.0   # 조각 방식에서 한 번에 인식할 소리 길이 기본값 (HELPER_CHUNK_SEC 가 먼저)
+    hop_sec = 0.0     # 조각을 보내는 간격 기본값 (HELPER_HOP_SEC 가 먼저). 0 이면 조각 길이와 같음 (안 겹침)
 
     def check(self) -> None:
         """설정이 모자라면 MissingConfig."""

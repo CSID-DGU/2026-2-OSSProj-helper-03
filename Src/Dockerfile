@@ -9,9 +9,8 @@ ENV PYTHONUNBUFFERED=1 \
     HELPER_STT=google \
     HELPER_INPUTS=browser,text \
     HELPER_LOG_DIR=off \
-    HELPER_HOP_SEC=1.5 \
     HELPER_MAX_SESSION_SEC=600 \
-    HELPER_MAX_SESSIONS=3
+    HELPER_MAX_SESSIONS=2
 
 WORKDIR /app
 COPY requirements-server.txt .

@@ -13,11 +13,11 @@ def env(name: str, default: str = "") -> str:
 
 
 def env_int(name: str, default: int) -> int:
-    return int(env(name, str(default)))
+    return int(env(name) or default)      # .env 에 'X=' 처럼 값 없이 적혀 있으면 기본값
 
 
 def env_float(name: str, default: float) -> float:
-    return float(env(name, str(default)))
+    return float(env(name) or default)
 
 
 def env_path(name: str) -> Path | None:

@@ -14,6 +14,13 @@
 서울은 Speech 엔드포인트 없음, eu 는 us 보다 0.5초 느림). chirp_2(asia-southeast1)는 1초 빠르지만 정확도가
 평균 10점 낮고 잘못된 알림이 많았다. us 의 처리 시간은 약 1초 / 2초로 갈려서, 같은 요청을 동시에 두 번 보내
 먼저 온 답을 쓰면 느린 때 중앙 1.99 → 1.58초, 빠른 때 1.15 → 1.05초 (GOOGLE_STT_HEDGE=2, 인식 비용 2배)
+
+기본값 (11/18 실시간 측정, #40): 3초 조각을 1.5초마다, 같은 요청 2번. 도달 지연은 '조각 대기 + 인식' 이 거의
+전부인데(나머지 0.02초), 요청 1번이면 인식이 1.4~2.0초로 느린 때가 많아 도달 중앙 2.8~3.1초, 2번이면 인식 1.1초 ·
+도달 2.6초 (원본 ±1큐 87~88 → 90.7%). 2.5초 조각을 1초마다 + 2번은 도달 2.0초 · 원본 94% 였지만 요청이 잦아
+힌트 베끼기에 더 걸려서 이탈 감지가 9건 중 8 → 5건으로 줄어 기본값으로 쓰지 않았다 (3초를 1초마다는 대사 정확도
+73~75%, 2초 조각은 64%). 요금은 요청마다 1초 단위로 올림이라 2.5초 조각도 3초로 청구된다.
+US 엔드포인트 인식 요청 한도는 프로젝트당 분당 201번: 1.5초 간격 · 2번이면 회차 하나가 분당 80번이라 동시에 2회차까지
 """
 import json
 import os
@@ -37,7 +44,8 @@ class GoogleEngine(STTEngine):
     timeout = 5.0  # 요청 제한 시간(초). 몇 초 넘게 걸린 결과는 뒤 조각에 밀려 어차피 버리므로
                    # 오래 기다리지 않고 동시 요청 자리를 비운다 (실패 504 가 13.7초 걸린 적 있음)
     default_model, default_location = "chirp_3", "us"
-    hedge = 1      # 같은 요청을 동시에 몇 번 보낼지 (GOOGLE_STT_HEDGE). 2 면 먼저 온 답을 쓴다
+    chunk_sec, hop_sec = 3.0, 1.5   # 3초 조각을 1.5초마다 (겹쳐 보내면 대사가 조각 경계에 덜 잘림)
+    hedge = 2      # 같은 요청을 동시에 몇 번 보낼지 (GOOGLE_STT_HEDGE). 2 면 먼저 온 답을 쓴다 (인식 비용 2배)
 
     def __init__(self):
         self.cred = env_path("GOOGLE_APPLICATION_CREDENTIALS")
@@ -124,6 +132,7 @@ class GoogleStreamEngine(GoogleEngine):
     key = "google_stream"
     mode = "stream"
     default_model, default_location = "long", "global"
+    hedge = 1      # 스트리밍은 같은 요청 여러 번 보내기를 쓰지 않음
 
     def stream(self, frames, hints_fn=None):
         cs = self.cs
