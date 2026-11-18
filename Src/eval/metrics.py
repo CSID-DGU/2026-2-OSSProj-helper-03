@@ -59,10 +59,13 @@ class Report:
     big_jumps: int                  # 3큐 이상 건너뛴 횟수
     samples: int
     reach: dict[int, float] = field(default_factory=dict)
+    exact: float = 0.0              # 화면 큐가 정답 큐와 정확히 같은 비율
+    unseen: int = 0                 # 화면에 한 번도 안 보인 큐 (뒤 큐로 건너뛰어 지나감. missed 는 뒤 큐에 닿으면 지난 것으로 셈)
 
 
 def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]], cues: list[Cue],
-             end_sec: float, step: float = 0.5) -> Report:
+             end_sec: float, step: float = 0.5, only: set[int] | None = None) -> Report:
+    """only = 이 큐들을 말하는 동안만 센다 (예: 숫자가 든 대사만). 뒤로 간 횟수 · 큰 점프는 전체로 센다."""
     items = [c for c in cues if c.type in TRACK_TYPES and c.jamo]
     idx = {c.id: i for i, c in enumerate(items)}
     order = {c.id: c.order for c in cues}
@@ -87,17 +90,18 @@ def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]],
         k = bisect_right(tl_t, t) - 1
         return timeline[k][1] if k >= 0 else start_id
 
-    hit = total = 0
+    hit = total = same = 0
     typed = {"dialogue": [0, 0], "lyric": [0, 0]}
     t = labels[0][0] if labels else 0.0
     while t <= end_sec:
         k = bisect_right(lab_t, t) - 1
         truth = tracked_at_or_before(labels[k][1]) if k >= 0 else None
         s = shown(t)
-        if truth is not None and s in idx:
+        if truth is not None and s in idx and (only is None or truth in only):
             ok = abs(idx[truth] - idx[s]) <= 1
             total += 1
             hit += ok
+            same += truth == s
             typed[ctype[truth]][0] += ok
             typed[ctype[truth]][1] += 1
         t += step
@@ -105,13 +109,13 @@ def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]],
     reach = {}
     shown_from_start = [(0.0, start_id)] + list(timeline)   # 화면은 시작부터 첫 추적 큐를 보여 준다
     for t0, cid in labels:
-        if cid not in idx:
+        if cid not in idx or (only is not None and cid not in only):
             continue
         first = next((t for t, c in shown_from_start if c in idx and idx[c] >= idx[cid] and t >= t0 - 1.0), None)
         if first is not None:
             reach[cid] = max(0.0, first - t0)
     delays = sorted(reach.values())
-    labelled = [cid for _, cid in labels if cid in idx]
+    labelled = [cid for _, cid in labels if cid in idx and (only is None or cid in only)]
 
     back = big = 0
     prev = idx.get(start_id, 0)
@@ -130,4 +134,5 @@ def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]],
         accuracy=hit / total if total else 0.0,
         by_type={k: (v[0] / v[1] if v[1] else 0.0) for k, v in typed.items()},
         reach_median=pct(0.5), reach_p90=pct(0.9),
-        missed=len(labelled) - len(reach), back=back, big_jumps=big, samples=total, reach=reach)
+        missed=len(labelled) - len(reach), back=back, big_jumps=big, samples=total, reach=reach,
+        exact=same / total if total else 0.0, unseen=len(set(labelled) - {start_id} - {c for _, c in timeline}))
