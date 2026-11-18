@@ -6,7 +6,7 @@
 
 배우가 대본을 벗어났다 돌아오면, 돌아온 자막 큐 번호를 오퍼레이터에게 바로 알려 줍니다.
 
-[수행계획서](Doc/1_1_OSSProj_03_Helper_수행계획서.pdf) · [발표자료](Doc/1_2_OSSProj_03_Helper_수행계획발표자료.pptx) · [회의록](Doc/4_1_OSSProj_03_Helper_회의록.pdf)
+[수행계획서](Doc/1_1_OSSProj_03_Helper_수행계획서.pdf) · [중간보고서](Doc/2_1_OSSProj_03_Helper_중간보고서.pdf) · [회의록](Doc/4_1_OSSProj_03_Helper_회의록.pdf) · [배포 운영 안내](Src/DEPLOY.md) · [테스트 페이지](https://helper-ui-six.vercel.app)
 
 <img src="images/aux_screen_wireframe.png" width="780" alt="보조 화면 와이어프레임">
 
@@ -49,17 +49,19 @@
 
 ## 시스템 구성
 
-오퍼레이터 노트북 한 대에서 동작합니다. 로컬 서버(FastAPI)가 음성인식과 대본 정렬을 처리하고, 보조 화면(React)에 WebSocket으로 결과를 보냅니다.
+보조 화면(React)과 엔진(FastAPI)이 WebSocket으로 이어집니다. 엔진은 소리를 3초 조각으로 1.5초마다 음성인식에 보내고, 받아 적은 글자로 대본에서 현재 위치를 찾아 이탈을 판단합니다. 오퍼레이터 노트북 한 대에서 둘 다 돌릴 수 있고(로컬 실행), 테스트용으로 화면은 Vercel, 엔진은 Google Cloud Run에 올려 두었습니다(배포본).
 
-<p align="center"><img src="images/system_architecture.png" width="780" alt="시스템 구성도"></p>
+<p align="center"><img src="images/deploy_architecture.png" width="780" alt="배포본 구성도"></p>
+
+<p align="center"><sub>테스트용 배포본 구성 (2026.11.18)</sub></p>
 
 | 영역 | 기술 |
 |---|---|
-| 음성 처리 | Python 3.11, silero-vad |
-| 음성인식 | faster-whisper / 클라우드 STT (10월 비교 후 결정) |
-| 대본 정렬 | 문자열 유사도, 한글 자모 분해, 상태 기계 |
-| 서버·화면 | FastAPI, WebSocket, React, TypeScript |
-| 데이터·배포 | SQLite, PyInstaller, GitHub Releases |
+| 음성 처리 | Python 3.11, NumPy, soundfile (조용한 조각 거르기 silero-vad는 기본 꺼짐) |
+| 음성인식 | Google Speech-to-Text V2 chirp_3와 대본 힌트 (로컬 예비: faster-whisper) |
+| 대본 정렬 | rapidfuzz 문자열 유사도, 한글 자모 분해(jamo), 이탈 감지 상태 기계 |
+| 서버와 화면 | FastAPI, WebSocket, React 19, TypeScript, Vite |
+| 배포와 테스트 | Docker, Google Cloud Run(엔진), Vercel(화면), GitHub Actions(pytest, lint, build) |
 
 ## 목표
 
@@ -85,14 +87,14 @@
 ## 저장소 구조
 
 ```
-├── Src/       소스 코드 (1단계 개발부터 추가)
+├── Src/       엔진, 서버, 보조 화면 소스와 테스트 (실행 방법은 Src/README.md)
 ├── Doc/       수행계획서, 발표자료, 회의록, 보고서
 └── images/    README에 쓰는 그림
 ```
 
 공연 대본과 음원은 제작사 자산이라 저장소에 올리지 않습니다. 문서 목록은 [Doc/README.md](Doc/README.md)에 있습니다.
 
-인터넷에 올려서 테스터가 브라우저로 써 보게 하는 방법은 [Src/DEPLOY.md](Src/DEPLOY.md)에 있습니다.
+테스터가 브라우저로 써 볼 수 있게 올려 둔 배포본은 https://helper-ui-six.vercel.app 입니다 (접속 코드는 팀에 문의). 올리고 운영하는 방법은 [Src/DEPLOY.md](Src/DEPLOY.md)에 있습니다.
 
 ## 팀원
 
