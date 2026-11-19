@@ -116,7 +116,9 @@ export default function App() {
       onSay={(text) => send({ type: 'test.say', text })}
       onSendSubtitle={(text, source) => send({ type: 'subtitle.send', text, source })}
       onJump={(cueId) => send({ type: 'position.set', cue_id: cueId })}
-      onSendCue={(cueId, groupedIds) => send({ type: 'cue.send', cue_id: cueId, grouped_ids: groupedIds })}
+      onSendCue={(cueId, groupedIds, passedIds) =>
+        send({ type: 'cue.send', cue_id: cueId, grouped_ids: groupedIds, passed_ids: passedIds })
+      }
     />
   )
 }

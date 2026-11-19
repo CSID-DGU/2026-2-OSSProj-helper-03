@@ -24,8 +24,10 @@ from .stt import STTEngine
 
 log = logging.getLogger("helper.pipeline")
 
-MAX_SYLLABLES_PER_SEC = 10   # 이보다 빠르면 사람이 말한 게 아니라 환각으로 본다. 두 사람이 겹쳐 말하면
-                             # 3초에 28~32음절도 나와서 8 → 10 (지어낸 결과는 3초에 44~52음절)
+MAX_SYLLABLES_PER_SEC = 12   # 이보다 빠르면 사람이 말한 게 아니라 환각으로 본다. 두 사람이 겹쳐 말하면
+                             # 3초에 28~32음절도 나와서 8 → 10 (지어낸 결과는 3초에 44~52음절).
+                             # 2.5초 조각(빠른 설정)에서는 겹쳐 말한 곳이 2.5초에 29~30음절이라 10 → 12. 저장 기록 44벌:
+                             # 원본 잘못된 알림 8 → 6건, 이탈 감지 그대로. 힌트를 베낀 결과는 대부분 초당 14음절이 넘었다
 STREAM_TAIL = 12             # 스트리밍 결과에서 정렬기에 넣을 최근 글자 수 (공백 제외)
 FAIL_ALERT_AFTER = 3         # 음성인식 요청이 이만큼 연달아 실패하면 화면에 알림 (인터넷 끊김 · 키 만료 등)
 LATE_KEEP_SEC = 3.0          # 뒤 조각보다 늦게 온 결과도 이만큼 안쪽 소리면 쓴다 (조각 1초 간격에서 늦은 결과를
@@ -166,10 +168,11 @@ class Pipeline:
             alert = self.detector.update(step, self.aligner.pos, int(time.time() * 1000), hold=song)
         if step.heard:
             latency_ms = (self.source.now_audio() - audio_end) * 1000 / self.speed
-            self.emit(position_update(step.cue.id, step.score / 100, latency_ms, transcript or text))
+            passed = [c.id for c in step.passed]
+            self.emit(position_update(step.cue.id, step.score / 100, latency_ms, transcript or text, passed))
             self.record("step", t=round(audio_end, 3), status=step.status, cue=step.cue.id,
                         cand=step.cand.id if step.cand else None, score=round(step.score, 1),
-                        text=transcript or text)
+                        text=transcript or text, **({"passed": passed} if passed else {}))
         if alert:
             log.info("이탈 알림: %s since=%d 복귀=%s", alert.deviation_type, alert.since, alert.return_cue_id)
             self.emit(deviation_alert(alert.deviation_type, alert.since, alert.return_cue_id))

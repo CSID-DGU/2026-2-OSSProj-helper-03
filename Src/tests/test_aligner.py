@@ -99,6 +99,33 @@ def test_passing_heard_lines_is_not_a_skip(sample_cues):
     al.update(lines[0].text)
     step = al.update(" ".join(c.text for c in lines[1:4]))
     assert al.current.id == lines[3].id and step.skipped == ()
+    assert [c.id for c in step.passed] == [lines[1].id, lines[2].id]   # 화면에 안 뜨고 지나간 줄 (지나간 줄 함께 띄우기)
+
+
+def test_passed_lines_leave_out_skipped_ones(sample_cues):
+    """지나간 줄로는 누락 근거가 없는 줄만 알린다. 안 들린 줄을 지나치면 그 줄은 빠진다."""
+    lines = dialogue(sample_cues)
+    al = Aligner(sample_cues)
+    al.update(lines[0].text)
+    al.update(lines[1].text)
+    assert al.update(lines[4].text).passed == ()                    # 두 줄 다 안 들림 (누락)
+    al = Aligner(sample_cues)
+    al.update(lines[0].text)
+    step = al.update(lines[2].text + " " + lines[3].text)
+    assert [c.id for c in step.skipped] == [lines[1].id] and [c.id for c in step.passed] == [lines[2].id]
+
+
+def test_unsaid_line_sharing_words_is_not_passed():
+    """말하지 않은 대사가 다음 줄과 낱말 몇 개만 같으면(부분 일치 점수는 넘어서 누락으로는 안 셈) 지나간 줄로도 안 알린다."""
+    from engine.cue_loader import parse_cues
+
+    cues = parse_cues("id,order,type,speaker,text\n1,1,dialogue,가,오늘 아침에 우산을 챙겨 왔어요\n"
+                      "2,2,dialogue,나,신발장에 뭐가 있더라\n3,3,dialogue,가,현관 옆 신발장에 걸어 뒀어\n"
+                      "4,4,dialogue,나,고마워 이제 나가자\n")
+    al = Aligner(cues)
+    al.update(cues[0].text)
+    step = al.update(cues[2].text)
+    assert al.current.id == 3 and step.skipped == () and step.passed == ()
 
 
 def test_going_back_to_a_heard_line_is_again(sample_cues):

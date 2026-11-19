@@ -63,6 +63,8 @@ def test_deviation_start_and_return(sample_cues, silence):
 def test_implausible_filter():
     assert implausible("가" * 44, "", 3)                   # 3초에 44음절 (지어낸 결과)
     assert not implausible("가" * 30, "", 3)               # 두 사람이 겹쳐 말하면 3초에 30음절도 나옴
+    assert not implausible("가" * 30, "", 2.5)             # 빠른 설정(2.5초 조각)에서 겹쳐 말한 곳은 2.5초에 29~30음절
+    assert implausible("가" * 38, "", 2.5)
     assert implausible("우산 챙겨", "우산 챙겨", 3)              # 직전과 똑같음
     assert implausible("아 아 아 아", "", 3)                 # 같은 말 반복
     assert not implausible("빛이 다시 돌아올 거예요", "", 3)
@@ -221,6 +223,24 @@ def test_typed_input_follows_script_and_flags_adlib(sample_cues):
     assert of(msgs, "deviation.alert")[-1]["return_cue_id"] == lines[3].id
     time.sleep(1.2)
     assert of(msgs, "input.status")[-1]["audio_level"] > 0           # 0 이면 화면이 '입력 없음'
+    pipe.stop()
+    pipe.join(timeout=3)
+
+
+def test_position_update_carries_passed_lines(sample_cues):
+    """줄을 건너뛰고 앞으로 가면 위치 갱신에 그 사이 들은 줄(passed_ids)이 붙는다 (화면이 지금 줄 앞에 함께 띄움)."""
+    from engine.audio_input import TextSource
+    from engine.pipeline import TypedInput
+
+    lines = [c for c in sample_cues if c.type == "dialogue"]
+    msgs = []
+    pipe = Pipeline(sample_cues, TextSource(), TypedInput(), msgs.append)
+    pipe.start()
+    pipe.say(lines[0].text)
+    pipe.say(lines[1].text + " " + lines[2].text)
+    ups = of(msgs, "position.update")
+    assert "passed_ids" not in ups[0]
+    assert ups[-1]["cue_id"] == lines[2].id and ups[-1]["passed_ids"] == [lines[1].id]
     pipe.stop()
     pipe.join(timeout=3)
 

@@ -57,8 +57,9 @@ def aligner_kwargs(args) -> dict:
     return kw
 
 
-def replay(cues, records, kw) -> list[tuple[float, int]]:
-    """인식 글자를 시간 순서대로 추적기에 넣어 타임라인을 만든다 (파이프라인과 같은 걸러내기)."""
+def replay(cues, records, kw, passed: list | None = None) -> list[tuple[float, int]]:
+    """인식 글자를 시간 순서대로 추적기에 넣어 타임라인을 만든다 (파이프라인과 같은 걸러내기).
+    passed 에 목록을 주면 지나간 줄 함께 띄우기로 화면에 갈 줄을 [(시각초, [큐번호])] 로 채운다."""
     al = Aligner(cues, **kw)
     timeline, prev_raw = [], ""
     for r in processing_order(records):   # 파이프라인과 같은 순서 (늦어서 버린 결과는 빼고)
@@ -66,9 +67,11 @@ def replay(cues, records, kw) -> list[tuple[float, int]]:
         text = "" if implausible(raw, prev_raw, r["chunk_end"] - r["chunk_start"]) else raw
         prev_raw = raw
         before = al.current.id
-        al.update(text, r["chunk_end"], r["chunk_start"], r.get("loud"))
+        step = al.update(text, r["chunk_end"], r["chunk_start"], r.get("loud"))
         if al.current.id != before:
             timeline.append((r["chunk_end"] + r.get("proc_sec", 0.0), al.current.id))
+        if passed is not None and step.passed:
+            passed.append((r["chunk_end"] + r.get("proc_sec", 0.0), [c.id for c in step.passed]))
     return timeline
 
 

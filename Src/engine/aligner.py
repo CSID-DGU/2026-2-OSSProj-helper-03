@@ -71,6 +71,19 @@
   저장된 인식 기록으로 다시 돌린 결과 (11/18): 빠른 설정(2.5/1초, 같은 요청 2번) 이탈 9건 중 5 → 8건, 기본 설정(3/1.5초)
   7 → 8건, 잘못된 알림은 둘 다 0건 그대로. 다른 설정으로 잰 기록도 찾은 수는 같거나 늘고 잘못된 알림 0건 그대로.
   원본 녹음 22벌 76분 잘못된 알림 11 → 8건, ±1큐 정확도 평균 87.3 → 87.4%, 도달 지연 그대로
+9차 (화면에 한 번도 안 뜨는 줄, 11/19):
+- 고정 시험 세트의 '안 보임' 40건 중 16건은 화면의 짧은 대사 묶어 보이기로 뜨는 줄이었고, 남은 24건은 빠른 주고받기
+  (6 ~ 11음절을 1.1초 안에 말함, 한 조각에 다음 줄까지 들어가 바로 뒤 줄로 감) 10건, 노래 12건, 이탈 바로 뒤 2건.
+  거의 다 한 줄을 건너뛰고 바로 다음 줄로 간 경우라, 지나친 줄 중 말한 것으로 보이는 줄을 Step.passed 로 알려 준다.
+  화면은 이 줄을 지금 줄 앞에 함께 띄운다 (지나간 줄 함께 띄우기). 작은 이동(small_step 이하)만 (크게 건너뛴 이동은 잘못 튄
+  것일 수 있음). 대사는 누락 근거가 없고 최근 인식 글자로 줄 자모의 HEARD_PART 넘게 들었어야 한다. 앞 줄과 같은 낱말만 겹쳐도
+  heard_score 는 넘어서, 말하지 않은 줄이 붙었다 (대사 입력 시험). 가사는 노래 인식이 약해서 누락 근거만 없으면 넣는다
+- 빠른 주고받기에서 두 사람이 겹쳐 말한 조각(2.5초에 29 ~ 30음절)이 너무 빠른 말로 걸러져서, 그 줄들을 못 들은 것으로 보고
+  잘못된 누락 알림이 났다 (빠른 설정 원본 녹음의 1건). 거르기 기준을 초당 10 → 12음절로 (engine/pipeline.py)
+- 저장된 인식 기록으로 다시 돌린 결과 (eval/suite.py 의 '화면 안 보임', '잘못 띄움'): 고정 시험 세트 원본과 이탈 녹음 6벌에서
+  안 보임 40 → 38건, 휴대폰 자막에 못 뜬 대사는 짧은 대사 묶어 보이기만으로 22건, 지나간 줄까지 1건. 말하기 전에 띄운 줄 2건.
+  원본 녹음 22벌 76분: 안 보임 255 → 화면 안 보임 64건, 띄운 지나간 줄 193줄 중 27줄이 말하기 전 (대부분 노래에서 추적기가
+  앞서 간 경우). 빠른 설정 원본 녹음은 잘못된 알림 1 → 0건, ±1큐 94.1 → 95.1%. 이탈 감지는 그대로
 """
 import inspect
 from bisect import bisect_right
@@ -105,6 +118,7 @@ class Step:
     cand: Cue | None = None  # 이번 인식이 가리킨 큐 (받아들였는지와 별개)
     skipped: tuple[Cue, ...] = ()  # 이번 이동으로 지나친 대사 중 최근 인식 글자에 없던 것 (누락 근거)
     again: bool = False    # 이미 들었던 앞 큐로 되돌아감 (반복 근거)
+    passed: tuple[Cue, ...] = ()   # 이번 이동으로 지나친 줄 중 누락 근거가 없는 것 (화면이 지금 줄 앞에 함께 띄움)
 
     @property
     def matched(self) -> bool:
@@ -359,10 +373,17 @@ class Aligner:
                 skipped.append(c)
         if skipped and self.dropout_guard and self._dropout_covers(skipped, since):
             skipped = []                      # 인식이 비어 있던 동안 말했을 수 있음: 누락으로 안 셈
+        passed = ()
+        if 1 < idx - prev <= self.small_step:   # 자연스러운 진행에서 화면에 안 뜨고 지나간 줄 (지나간 줄 함께 띄우기)
+            gone, texts = {c.id for c in skipped}, list(self.recent)
+            # 대사는 줄 자모의 HEARD_PART 넘게 들었어야 함 (앞 줄과 같은 낱말만 겹쳐도 heard_score 는 넘음).
+            # 가사는 노래 인식이 약해서, 아주 짧은 줄은 판단할 수 없어서 누락 근거만 없으면 넣는다
+            passed = tuple(c for c in self.items[prev + 1:idx] if c.id not in gone and (
+                c.type != "dialogue" or len(c.jamo) < self.min_jamo or _covered(c.jamo, texts) >= HEARD_PART))
         self.heard.add(idx)
         if self.end_check and new_line:
             self.check_end = (idx, self.clock)
-        return Step("move" if idx != prev else "stay", self.current, score, cand, tuple(skipped), again)
+        return Step("move" if idx != prev else "stay", self.current, score, cand, tuple(skipped), again, passed)
 
     def _check_new_line(self, t: str):
         """지난번에 새로 넘어간 줄을, 소리가 겹치는 이번 조각 글자로 확인한다 (end_check). 빈 결과면 다음 조각까지 기다리고,

@@ -721,6 +721,13 @@ button:disabled {
   color: var(--muted);
 }
 
+/* 지나간 줄 함께 띄우기: 지금 줄 앞에 함께 송출되는 줄 */
+.send-passed {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .send-deviating .send-id,
 .send-deviating .send-text {
   opacity: 0.6;
@@ -993,6 +1000,11 @@ button.send-button {
 .phone-sub-next {
   display: block;
   margin-top: 6px;
+}
+
+.phone-sub-prev {
+  display: block;
+  margin-bottom: 6px;
 }
 
 /* 엔진 오류 (회차를 못 엶 · 음성인식이 계속 실패) */

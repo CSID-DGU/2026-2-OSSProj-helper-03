@@ -80,13 +80,14 @@ export interface PositionSet {
 
 /**
  * (추가) 대본 큐 송출. AI가 추천한 큐를 오퍼레이터가 확인하고 직접 내보낸다 (자동 송출 없음, 마지막 판단은 사람).
- * grouped_ids: 함께 띄우는 짧은 대사(짧은 대사 묶어 보이기).
+ * grouped_ids: 함께 띄우는 짧은 대사(짧은 대사 묶어 보이기). passed_ids: 지금 줄 앞에 함께 띄우는 지나간 줄.
  * 실서버는 받아서 회차 기록 · 로그에만 남긴다. 실제 관객 송출은 2단계 송출 프로그램 연동 후.
  */
 export interface CueSend {
   type: 'cue.send'
   cue_id: number
   grouped_ids: number[]
+  passed_ids?: number[]
 }
 
 export type ClientMessage =
@@ -113,6 +114,11 @@ export interface PositionUpdate {
    * 수행계획서 화면 설계에는 있지만 메시지 표에는 없어서 엔진 담당과 확인 필요.
    */
   transcript?: string
+  /**
+   * (추가) 지나간 줄 함께 띄우기: 이번 이동으로 화면에 한 번도 안 뜨고 지나간 줄 중 엔진이 말한 것으로 본 줄 (있을 때만).
+   * 빠른 주고받기에서 한 조각에 다음 줄까지 들어가면 바로 뒤 줄로 가서 그 사이 줄이 안 뜬다. 화면은 지금 줄 앞에 함께 띄운다.
+   */
+  passed_ids?: number[]
 }
 
 /** 이탈 판정 시. 대본으로 돌아오면 return_cue_id가 채워져 다시 온다. */

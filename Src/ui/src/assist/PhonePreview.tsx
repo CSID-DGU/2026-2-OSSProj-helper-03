@@ -1,5 +1,5 @@
 // 관객 휴대폰 자막 미리보기. 오퍼레이터가 마지막으로 송출한 것(대본 큐 또는 애드리브 임시 자막)을
-// 관객이 보게 될 모양 그대로 작게 보여 준다. 송출한 큐 바로 뒤의 짧은 대사는 함께 띄운다.
+// 관객이 보게 될 모양 그대로 작게 보여 준다. 송출한 큐 바로 뒤의 짧은 대사와, 함께 송출한 지나간 줄(앞)도 띄운다.
 
 import type { Cue } from '../cues'
 
@@ -7,6 +7,8 @@ interface Props {
   cue: Cue | undefined
   /** 송출한 큐와 함께 띄운 짧은 대사 */
   followers?: Cue[]
+  /** 송출한 큐 앞에 함께 띄운 지나간 줄 */
+  passed?: Cue[]
   /** 오퍼레이터가 송출한 애드리브 임시 자막. 있으면 대본 자막 대신 보여 준다 */
   temp?: string
 }
@@ -21,7 +23,7 @@ function subtitle(cue: Cue): string {
   return cue.text
 }
 
-export function PhonePreview({ cue, followers = [], temp }: Props) {
+export function PhonePreview({ cue, followers = [], passed = [], temp }: Props) {
   return (
     <section className="phone-wrap" aria-label="관객 휴대폰 자막 미리보기">
       <div className="phone-head">
@@ -34,6 +36,12 @@ export function PhonePreview({ cue, followers = [], temp }: Props) {
             <p className="phone-sub">{temp}</p>
           ) : (
             <p className="phone-sub">
+              {cue &&
+                passed.map((p) => (
+                  <span key={p.id} className="phone-sub-prev">
+                    {subtitle(p)}
+                  </span>
+                ))}
               {cue ? subtitle(cue) : '…'}
               {cue &&
                 followers.map((f) => (
