@@ -70,6 +70,15 @@ def test_screen_unseen_counts_grouped_and_passed_lines(sample_cues):
     assert early.wrong_passed == 1
 
 
+def test_unsure_flag_accuracy(sample_cues):
+    """신뢰도를 주면 '불확실'(0.6 미만)일 때와 아닐 때 ±1큐 정확도를 따로 잰다."""
+    lines = [c for c in sample_cues if c.type in ("dialogue", "lyric")][:4]
+    labels = [(i * 3.0, c.id) for i, c in enumerate(lines)]
+    rep = evaluate([(9.5, lines[3].id)], labels, sample_cues, end_sec=11.5,
+                   conf=[(0.0, 1.0), (6.0, 0.5), (9.5, 1.0)])     # 6 ~ 9.5초: 화면이 첫 줄에 뒤처져 있고 '불확실'
+    assert rep.unsure_acc == 0.0 and rep.sure_acc == 1.0 and abs(rep.unsure - 7 / 24) < 1e-9
+
+
 def test_short_followers_match_the_screen():
     """짧은 대사 묶어 보이기 (ui/src/shortLines.ts 와 같음): 음향 줄은 건너뛰고, 5음절 이하 대사를 2줄까지."""
     from engine.cue_loader import parse_cues

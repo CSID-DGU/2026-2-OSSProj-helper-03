@@ -164,14 +164,15 @@ class Pipeline:
         """인식 글자 하나를 정렬기 · 이탈 감지에 넣고 화면 메시지를 보낸다. audio_end = 그 소리의 끝 시각."""
         with self.lock:
             step = self.aligner.update(text, audio_end, start, loud)
+            conf = self.aligner.confidence     # 화면 줄을 믿을 만한 정도 (이번 글자의 맞춤 점수가 아님)
             song = self._segment() == "song"
             alert = self.detector.update(step, self.aligner.pos, int(time.time() * 1000), hold=song)
         if step.heard:
             latency_ms = (self.source.now_audio() - audio_end) * 1000 / self.speed
             passed = [c.id for c in step.passed]
-            self.emit(position_update(step.cue.id, step.score / 100, latency_ms, transcript or text, passed))
+            self.emit(position_update(step.cue.id, conf, latency_ms, transcript or text, passed))
             self.record("step", t=round(audio_end, 3), status=step.status, cue=step.cue.id,
-                        cand=step.cand.id if step.cand else None, score=round(step.score, 1),
+                        cand=step.cand.id if step.cand else None, score=round(step.score, 1), conf=round(conf, 2),
                         text=transcript or text, **({"passed": passed} if passed else {}))
         if alert:
             log.info("이탈 알림: %s since=%d 복귀=%s", alert.deviation_type, alert.since, alert.return_cue_id)

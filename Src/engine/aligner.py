@@ -84,6 +84,15 @@
   안 보임 40 → 38건, 휴대폰 자막에 못 뜬 대사는 짧은 대사 묶어 보이기만으로 22건, 지나간 줄까지 1건. 말하기 전에 띄운 줄 2건.
   원본 녹음 22벌 76분: 안 보임 255 → 화면 안 보임 64건, 띄운 지나간 줄 193줄 중 27줄이 말하기 전 (대부분 노래에서 추적기가
   앞서 간 경우). 빠른 설정 원본 녹음은 잘못된 알림 1 → 0건, ±1큐 94.1 → 95.1%. 이탈 감지는 그대로
+10차 (화면 '불확실' 표시를 믿을 만하게, 11/19):
+- 화면에 보내는 신뢰도가 '이번 인식 글자의 맞춤 점수'라서, 화면이 0.6 미만일 때 띄우는 '불확실'이 틀린 화면을 못 가려냈다.
+  애드리브나 잡음처럼 안 맞는 말이 들려도 화면 줄은 대개 맞기 때문 (지금 설정 기록 16벌: 불확실일 때도 아닐 때도 ±1큐 85%)
+- 신뢰도를 '화면 줄을 믿을 만한 정도'(confidence)로 바꾼다: 마지막으로 위치를 확인한 점수. 그 점수가 UNSURE_SCORE 미만이거나
+  (약하게 맞아서 옮김), 지금 줄이 힌트를 베낀 것으로 의심되거나(end_check), 큰 이동 후보가 기다리는 중(배우가 앞서 가 있을 수
+  있음)이면 UNSURE_CONF 로 낮춘다
+- 저장 기록 0.5초 표본: 인식이 끊기거나 나빴던 예전 기록 29벌에서 불확실일 때 ±1큐 61%, 아닐 때 84%, 틀린 화면의 33%를 미리
+  표시 (예전 방식은 75% / 81%, 17%). 지금 설정 기록 16벌에서는 틀린 화면이 대부분 확신한 채 뒤처진 경우(빠른 주고받기, 노래)라
+  둘 다 잘 못 가려내지만, 불확실을 덜 띄운다 (16 → 13%, 그때 81% / 아닐 때 85%)
 """
 import inspect
 from bisect import bisect_right
@@ -103,6 +112,9 @@ HEARD_BLOCK, HEARD_PART = 4, 0.6
 RESTART_JAMO = 18
 # 새 줄을 확인할 다음 조각은 그 줄로 넘어간 조각과 이만큼(초) 넘게 겹쳐야 함 (덜 겹치면 그 줄 소리가 이미 지나갔을 수 있음)
 END_OVERLAP = 1.0
+# 화면 줄을 믿을 만한 정도(confidence): 마지막 확인 점수가 이 아래면 불확실. 원본 22벌에서 80 미만으로 옮긴 뒤 화면은 54%만 맞았다
+UNSURE_SCORE = 80.0
+UNSURE_CONF = 0.5   # 불확실할 때 보내는 값 (화면은 0.6 미만이면 '불확실', ui/src/settings.ts DEFAULT_ALERT_THRESHOLD)
 
 # 개선 전(엔진 서버 첫 버전) 설정. 평가(eval/run_eval.py --baseline)에서 비교용으로 쓴다.
 BASELINE = dict(min_jamo=6, accept=65.0, back=3, ahead=15, small_step=2, confirm=2, lost_after=3,
@@ -182,6 +194,7 @@ class Aligner:
         self.at: float | None = None  # 마지막으로 위치를 확인한 소리 시각
         self.stale = 0                # 마지막으로 위치를 확인한 뒤 지난 인식 횟수 (빈 결과 포함)
         self.pos = 0
+        self.last_score = 100.0       # 마지막으로 위치를 확인한(옮기거나 머문) 점수 (confidence 계산용). 시작 줄은 믿음
         self.pending: list[tuple[int, float]] = []   # 큰 이동 후보 (위치, 소리 끝 시각), 나온 순서
         self.said: deque[tuple[float, str]] = deque(maxlen=16)   # 최근 인식 자모 (소리 끝 시각, 자모): 먼 이동 근거
         if start_id is not None:
@@ -193,6 +206,14 @@ class Aligner:
         return self.items[self.pos]
 
     @property
+    def confidence(self) -> float:
+        """화면 줄(현재 위치)을 믿을 만한 정도 0~1: 마지막으로 위치를 확인한 점수. 약하게 맞아서 옮겼거나(UNSURE_SCORE 미만),
+        지금 줄이 힌트를 베낀 것으로 의심되거나, 큰 이동 후보가 기다리는 중이면 UNSURE_CONF 이하 (화면 '불확실')."""
+        if self.last_score < UNSURE_SCORE or self.pos in self.suspect or self.pending:
+            return min(UNSURE_CONF, self.last_score / 100)
+        return self.last_score / 100
+
+    @property
     def lost(self) -> bool:
         return self.miss >= self.lost_after
 
@@ -202,6 +223,7 @@ class Aligner:
         if idx is None:
             return False
         self.pos, self.miss, self.pending, self.stale, self.at = idx, 0, [], 0, self.clock
+        self.last_score = 100.0       # 오퍼레이터가 맞춘 위치는 믿음
         self.gaps.clear()             # 오퍼레이터가 맞췄으므로 그 전 끊김으로 따라잡지 않음
         self.check_end, self.back_cands = None, []
         self.suspect.clear()          # 오퍼레이터가 맞춘 위치부터 새로 판단
@@ -356,6 +378,7 @@ class Aligner:
             self.suspect.discard(idx)          # 다시 그 줄로 왔으면 새 근거로 다시 판단 (반복으로 되돌아온 줄 등)
         new_line = idx > prev and idx not in self.heard
         self.pos, self.pending, self.stale, self.at = idx, [], 0, self.clock
+        self.last_score = score
         if idx - prev > self.far:     # 따라잡았으면 그 끊김은 다 썼음
             self.gaps.clear()
         skipped = []

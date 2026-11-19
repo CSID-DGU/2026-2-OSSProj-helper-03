@@ -57,9 +57,10 @@ def aligner_kwargs(args) -> dict:
     return kw
 
 
-def replay(cues, records, kw, passed: list | None = None) -> list[tuple[float, int]]:
+def replay(cues, records, kw, passed: list | None = None, conf: list | None = None) -> list[tuple[float, int]]:
     """인식 글자를 시간 순서대로 추적기에 넣어 타임라인을 만든다 (파이프라인과 같은 걸러내기).
-    passed 에 목록을 주면 지나간 줄 함께 띄우기로 화면에 갈 줄을 [(시각초, [큐번호])] 로 채운다."""
+    passed 에 목록을 주면 지나간 줄 함께 띄우기로 화면에 갈 줄을 [(시각초, [큐번호])] 로,
+    conf 에 목록을 주면 위치 갱신마다 화면에 보낸 신뢰도를 [(시각초, 신뢰도)] 로 채운다."""
     al = Aligner(cues, **kw)
     timeline, prev_raw = [], ""
     for r in processing_order(records):   # 파이프라인과 같은 순서 (늦어서 버린 결과는 빼고)
@@ -68,10 +69,13 @@ def replay(cues, records, kw, passed: list | None = None) -> list[tuple[float, i
         prev_raw = raw
         before = al.current.id
         step = al.update(text, r["chunk_end"], r["chunk_start"], r.get("loud"))
+        t = r["chunk_end"] + r.get("proc_sec", 0.0)
         if al.current.id != before:
-            timeline.append((r["chunk_end"] + r.get("proc_sec", 0.0), al.current.id))
+            timeline.append((t, al.current.id))
         if passed is not None and step.passed:
-            passed.append((r["chunk_end"] + r.get("proc_sec", 0.0), [c.id for c in step.passed]))
+            passed.append((t, [c.id for c in step.passed]))
+        if conf is not None and step.heard:      # 파이프라인은 들은 말일 때만 위치 갱신(신뢰도)을 보낸다
+            conf.append((t, al.confidence))
     return timeline
 
 

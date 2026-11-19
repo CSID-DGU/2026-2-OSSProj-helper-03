@@ -23,6 +23,7 @@
 - 안 보임: 화면에 한 번도 안 보인 큐 (뒤 큐로 건너뛰어 지나감. 짧은 대사를 놓치면 여기에 잡힘)
 - 화면 안 보임: 휴대폰 자막에 한 번도 못 뜬 대사. 짧은 대사 묶어 보이기와 지나간 줄 함께 띄우기로 뜨는 줄은 본 것으로 셈
 - 잘못 띄움: 지나간 줄로 함께 띄웠는데 그 무렵(15초 안) 말하지 않은 줄
+- 불확실 표시: 화면이 '불확실'을 띄운 시간 비율 (괄호 안은 그때 / 아닐 때 ±1큐). 표시가 틀린 화면을 가려내는지 본다
 - 이탈 찾음, 유형 맞음, 복귀 큐 맞음, 감지 중앙: eval/deviation_eval.py 와 같은 기준 (복귀 뒤 10초까지 온 알림)
 - 잘못된 알림: 정답 이탈에 안 걸린 알림 (괄호 안은 10분당)
 """
@@ -39,7 +40,7 @@ from eval.metrics import evaluate, read_labels, read_records
 from eval.run_eval import replay as replay_timeline
 
 COLUMNS = ("묶음", "기록", "길이", "±1큐", "같은 큐", "도달 중앙", "도달 p90", "못 나옴", "안 보임", "화면 안 보임",
-           "잘못 띄움", "이탈 찾음", "유형 맞음", "복귀 큐 맞음", "감지 중앙", "잘못된 알림")
+           "잘못 띄움", "불확실 표시", "이탈 찾음", "유형 맞음", "복귀 큐 맞음", "감지 중앙", "잘못된 알림")
 
 
 def fill_loud(records: list[dict], audio: Path | None, cache: dict) -> list[dict]:
@@ -60,6 +61,7 @@ def run_group(group: dict, base: Path, aligner_kw: dict, detector_kw: dict, cach
     cues = load_cues(base / group["cues"])
     only = set(group["only_cues"]) if group.get("only_cues") else None
     hit = same = samples = missed = unseen = screen = wrong = false = 0
+    flagged = [0, 0, 0, 0]          # 불확실 [맞음, 표본], 아닐 때 [맞음, 표본]
     reach, rows, minutes, tracked = [], [], 0.0, False
     for run in group["runs"]:
         records = fill_loud(read_records(base / run["results"]), base / run["audio"] if run.get("audio") else None, cache)
@@ -75,7 +77,14 @@ def run_group(group: dict, base: Path, aligner_kw: dict, detector_kw: dict, cach
         minutes += (truth.get("duration_sec") or end) / 60
         if labels:
             passed: list = []
-            rep = evaluate(replay_timeline(cues, records, aligner_kw, passed), labels, cues, end, only=only, passed=passed)
+            conf: list = []
+            rep = evaluate(replay_timeline(cues, records, aligner_kw, passed, conf), labels, cues, end, only=only,
+                           passed=passed, conf=conf)
+            n_unsure = round(rep.unsure * rep.samples)
+            flagged[0] += round((rep.unsure_acc or 0.0) * n_unsure)
+            flagged[1] += n_unsure
+            flagged[2] += round((rep.sure_acc or 0.0) * (rep.samples - n_unsure))
+            flagged[3] += rep.samples - n_unsure
             hit += round(rep.accuracy * rep.samples)
             same += round(rep.exact * rep.samples)
             samples += rep.samples
@@ -99,6 +108,9 @@ def run_group(group: dict, base: Path, aligner_kw: dict, detector_kw: dict, cach
         "reach_p90": delays[min(len(delays) - 1, int(0.9 * len(delays)))] if delays else None,
         "missed": missed if tracked else None, "unseen": unseen if tracked else None,
         "screen_unseen": screen if tracked else None, "wrong_passed": wrong if tracked else None,
+        "unsure": flagged[1] / samples if tracked and samples else None,
+        "unsure_acc": flagged[0] / flagged[1] if flagged[1] else None,
+        "sure_acc": flagged[2] / flagged[3] if flagged[3] else None,
         "deviations": len(rows), "found": len(found),
         "type_ok": sum(r["type_ok"] for r in found), "ret_ok": sum(r["ret_ok"] for r in found),
         "detect_median": statistics.median(r["delay"] for r in found) if found else None,
@@ -113,6 +125,7 @@ def row_text(g: dict) -> list[str]:
     return [g["name"], str(g["runs"]), f"{g['minutes']:.1f}분", pct(g["accuracy"]), pct(g["exact"]),
             sec(g["reach_median"]), sec(g["reach_p90"]), "-" if g["missed"] is None else str(g["missed"]),
             *("-" if g[k] is None else str(g[k]) for k in ("unseen", "screen_unseen", "wrong_passed")),
+            "-" if g["unsure"] is None else f"{g['unsure']:.0%} ({pct(g['unsure_acc'])} / {pct(g['sure_acc'])})",
             f"{g['found']}/{dev}" if dev else "-", f"{g['type_ok']}/{g['found']}" if dev else "-",
             f"{g['ret_ok']}/{g['found']}" if dev else "-", sec(g["detect_median"]) if dev else "-",
             f"{g['false']}건 ({10 * g['false'] / g['minutes']:.1f})" if g["minutes"] else str(g["false"])]

@@ -21,6 +21,7 @@ from engine.cue_loader import TRACK_TYPES, Cue
 # 화면 기준값 (ui/src/settings.ts 와 같게): 짧은 대사 묶어 보이기 음절과 줄 수, 지나간 줄 함께 띄우기 줄 수
 SHORT_LINE_SYLLABLES, SHORT_LINE_MAX_GROUPED, PASSED_MAX_SHOWN = 5, 2, 2
 SAID_WINDOW = 15.0   # 지나간 줄로 띄운 때부터 이만큼(초) 앞까지 그 줄을 말했으면 맞게 띄운 것
+UNSURE_BELOW = 0.6  # 신뢰도가 이 아래면 화면이 '불확실' (ui/src/settings.ts DEFAULT_ALERT_THRESHOLD)
 
 
 def short_followers(cues: list[Cue], cue_id: int) -> list[int]:
@@ -85,13 +86,18 @@ class Report:
     unseen: int = 0                 # 화면에 한 번도 안 보인 큐 (뒤 큐로 건너뛰어 지나감. missed 는 뒤 큐에 닿으면 지난 것으로 셈)
     screen_unseen: int = 0          # 휴대폰 자막에 한 번도 못 뜬 대사 (짧은 대사 묶어 보이기와 지나간 줄 함께 띄우기까지 넣고 셈)
     wrong_passed: int = 0           # 지나간 줄로 띄웠는데 그 무렵(SAID_WINDOW 초 안) 말하지 않은 줄
+    unsure: float = 0.0             # 화면이 '불확실'을 띄운 시간 비율 (conf 를 줬을 때)
+    unsure_acc: float | None = None   # '불확실'일 때 ±1큐 정확도
+    sure_acc: float | None = None     # '불확실'이 아닐 때 ±1큐 정확도
 
 
 def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]], cues: list[Cue],
              end_sec: float, step: float = 0.5, only: set[int] | None = None,
-             passed: list[tuple[float, list[int]]] | None = None) -> Report:
+             passed: list[tuple[float, list[int]]] | None = None,
+             conf: list[tuple[float, float]] | None = None) -> Report:
     """only = 이 큐들을 말하는 동안만 센다 (예: 숫자가 든 대사만). 뒤로 간 횟수 · 큰 점프는 전체로 센다.
-    passed = 지나간 줄 함께 띄우기로 화면에 간 줄 [(시각초, [큐번호])] (eval/run_eval.replay 의 passed)."""
+    passed = 지나간 줄 함께 띄우기로 화면에 간 줄 [(시각초, [큐번호])] (eval/run_eval.replay 의 passed).
+    conf = 위치 갱신마다 보낸 신뢰도 [(시각초, 신뢰도)] (replay 의 conf). 주면 '불확실' 표시가 틀린 화면을 가려내는지 잰다."""
     items = [c for c in cues if c.type in TRACK_TYPES and c.jamo]
     idx = {c.id: i for i, c in enumerate(items)}
     order = {c.id: c.order for c in cues}
@@ -118,6 +124,8 @@ def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]],
 
     hit = total = same = 0
     typed = {"dialogue": [0, 0], "lyric": [0, 0]}
+    conf_t = [t for t, _ in conf or []]
+    flag = {True: [0, 0], False: [0, 0]}         # 불확실 여부 → [맞음, 표본]
     t = labels[0][0] if labels else 0.0
     while t <= end_sec:
         k = bisect_right(lab_t, t) - 1
@@ -130,6 +138,11 @@ def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]],
             same += truth == s
             typed[ctype[truth]][0] += ok
             typed[ctype[truth]][1] += 1
+            if conf:
+                j = bisect_right(conf_t, t) - 1
+                unsure = j >= 0 and conf[j][1] < UNSURE_BELOW
+                flag[unsure][0] += ok
+                flag[unsure][1] += 1
         t += step
 
     reach = {}
@@ -170,4 +183,7 @@ def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]],
         reach_median=pct(0.5), reach_p90=pct(0.9),
         missed=len(labelled) - len(reach), back=back, big_jumps=big, samples=total, reach=reach,
         exact=same / total if total else 0.0, unseen=len(set(labelled) - on_screen),
-        screen_unseen=len(set(labelled) - seen), wrong_passed=wrong)
+        screen_unseen=len(set(labelled) - seen), wrong_passed=wrong,
+        unsure=flag[True][1] / total if total else 0.0,
+        unsure_acc=flag[True][0] / flag[True][1] if flag[True][1] else None,
+        sure_acc=flag[False][0] / flag[False][1] if conf and flag[False][1] else None)
