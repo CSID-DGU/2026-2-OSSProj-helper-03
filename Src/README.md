@@ -96,7 +96,7 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 | 오류 알림 | 회차를 못 열면(키 없음 · 큐/녹음 파일 없음 · 마이크 오류) `engine.error {message, during: "session.start"}`, 음성인식이 3번 연달아 실패하거나 스트리밍이 끊기면 `during: "recognize"`, 인터넷 서버의 1회 사용 시간이 다 되면 `during: "limit"`로 화면에 알림 (서버 로그에도 남김) | — |
 | 소리 입력 선택 | `session.start`의 `input`(file / mic / text / browser)을 읽음. 없으면 `.env`의 `HELPER_INPUT` | — |
 | 브라우저 소리 | `input: "browser"` 회차에서 화면이 보내는 바이너리 메시지를 16kHz 모노 PCM16 소리로 받아 마이크처럼 추적함. 화면은 테스터의 마이크나 고른 녹음 파일을 0.1초 조각으로 보냄 (`ui/src/browserAudio.ts`). 서버는 소리를 저장하지 않음 | — |
-| 대본 큐 송출 | `cue.send {cue_id, grouped_ids}`를 받아 서버 로그와 회차 기록에만 남김 | 송출 프로그램 연동(2단계) |
+| 대본 큐 송출 | `cue.send {cue_id, grouped_ids, passed_ids}`를 받아 서버 로그와 회차 기록에만 남김 | 송출 프로그램 연동(2단계) |
 | 대사 입력 테스트 | `input: "text"` 회차에서 `test.say {text}`를 음성인식 결과 한 번으로 보고 실제 추적기 · 이탈 감지로 따라감 (음성인식 엔진 · 키 · 녹음 불필요). 같은 대사를 다시 쳐서 반복도 시험할 수 있게 걸러내기는 하지 않음. 애드리브 알림은 대본에 없는 말을 두 번, `DEVIATE_AFTER_SEC` 넘게 걸쳐 쳐야 뜸 | — |
 | 애드리브 임시 자막 | `subtitle.send {text, source}`를 받아 서버 로그와 회차 기록(`subtitle`)에만 남김 | 수행계획서에서 이번 학기 범위 밖(Won't) · 송출 프로그램 연동(2단계)이라 팀 합의 필요 |
 

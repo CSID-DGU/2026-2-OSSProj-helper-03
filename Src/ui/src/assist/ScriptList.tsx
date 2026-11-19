@@ -16,9 +16,9 @@ interface Props {
   returnId: number | null
   /** 음향 입력이 없으면 현재 줄 표시를 흐리게 */
   paused: boolean
-  /** 지금 줄과 함께 휴대폰 자막에 띄우는 짧은 대사 */
+  /** 지금 줄과 함께 휴대폰 자막에 띄우는 줄 (뒤의 짧은 대사, 앞의 지나간 줄) */
   followerIds: number[]
-  /** 마지막으로 송출한 대본 큐 (함께 띄운 짧은 대사 포함) */
+  /** 마지막으로 송출한 대본 큐 (함께 띄운 짧은 대사와 지나간 줄 포함) */
   sentIds: number[]
   /** 위치 맞추기: 이 큐로 AI 추정 위치를 옮긴다 */
   onJump: (cueId: number) => void

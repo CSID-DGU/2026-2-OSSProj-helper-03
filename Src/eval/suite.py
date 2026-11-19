@@ -21,6 +21,8 @@
 - ±1큐 / 같은 큐: 0.5초마다 화면 큐가 정답 큐 ±1 안 / 정확히 같은 비율 (묶음 안 기록을 합친 값)
 - 도달: 대사 시작 → 화면 표시 (중앙, p90). 못 나옴: 끝까지 그 큐(나 뒤 큐)에 못 감
 - 안 보임: 화면에 한 번도 안 보인 큐 (뒤 큐로 건너뛰어 지나감. 짧은 대사를 놓치면 여기에 잡힘)
+- 화면 안 보임: 휴대폰 자막에 한 번도 못 뜬 대사. 짧은 대사 묶어 보이기와 지나간 줄 함께 띄우기로 뜨는 줄은 본 것으로 셈
+- 잘못 띄움: 지나간 줄로 함께 띄웠는데 그 무렵(15초 안) 말하지 않은 줄
 - 이탈 찾음, 유형 맞음, 복귀 큐 맞음, 감지 중앙: eval/deviation_eval.py 와 같은 기준 (복귀 뒤 10초까지 온 알림)
 - 잘못된 알림: 정답 이탈에 안 걸린 알림 (괄호 안은 10분당)
 """
@@ -36,8 +38,8 @@ from eval.deviation_eval import replay as replay_alerts
 from eval.metrics import evaluate, read_labels, read_records
 from eval.run_eval import replay as replay_timeline
 
-COLUMNS = ("묶음", "기록", "길이", "±1큐", "같은 큐", "도달 중앙", "도달 p90", "못 나옴", "안 보임",
-           "이탈 찾음", "유형 맞음", "복귀 큐 맞음", "감지 중앙", "잘못된 알림")
+COLUMNS = ("묶음", "기록", "길이", "±1큐", "같은 큐", "도달 중앙", "도달 p90", "못 나옴", "안 보임", "화면 안 보임",
+           "잘못 띄움", "이탈 찾음", "유형 맞음", "복귀 큐 맞음", "감지 중앙", "잘못된 알림")
 
 
 def fill_loud(records: list[dict], audio: Path | None, cache: dict) -> list[dict]:
@@ -57,7 +59,7 @@ def run_group(group: dict, base: Path, aligner_kw: dict, detector_kw: dict, cach
     """묶음 하나를 다시 돌려 표 한 줄에 들어갈 값을 모은다."""
     cues = load_cues(base / group["cues"])
     only = set(group["only_cues"]) if group.get("only_cues") else None
-    hit = same = samples = missed = unseen = false = 0
+    hit = same = samples = missed = unseen = screen = wrong = false = 0
     reach, rows, minutes, tracked = [], [], 0.0, False
     for run in group["runs"]:
         records = fill_loud(read_records(base / run["results"]), base / run["audio"] if run.get("audio") else None, cache)
@@ -72,13 +74,16 @@ def run_group(group: dict, base: Path, aligner_kw: dict, detector_kw: dict, cach
         end = max(r["chunk_end"] for r in records)
         minutes += (truth.get("duration_sec") or end) / 60
         if labels:
-            rep = evaluate(replay_timeline(cues, records, aligner_kw), labels, cues, end, only=only)
+            passed: list = []
+            rep = evaluate(replay_timeline(cues, records, aligner_kw, passed), labels, cues, end, only=only, passed=passed)
             hit += round(rep.accuracy * rep.samples)
             same += round(rep.exact * rep.samples)
             samples += rep.samples
             reach += rep.reach.values()
             missed += rep.missed
             unseen += rep.unseen
+            screen += rep.screen_unseen
+            wrong += rep.wrong_passed
             tracked = True
         alerts, _ = replay_alerts(cues, records, aligner_kw, detector_kw)
         res = score(alerts, truth.get("deviations", []), cues, 10.0, labels)
@@ -93,6 +98,7 @@ def run_group(group: dict, base: Path, aligner_kw: dict, detector_kw: dict, cach
         "reach_median": delays[min(len(delays) - 1, len(delays) // 2)] if delays else None,   # eval.metrics 와 같은 방식
         "reach_p90": delays[min(len(delays) - 1, int(0.9 * len(delays)))] if delays else None,
         "missed": missed if tracked else None, "unseen": unseen if tracked else None,
+        "screen_unseen": screen if tracked else None, "wrong_passed": wrong if tracked else None,
         "deviations": len(rows), "found": len(found),
         "type_ok": sum(r["type_ok"] for r in found), "ret_ok": sum(r["ret_ok"] for r in found),
         "detect_median": statistics.median(r["delay"] for r in found) if found else None,
@@ -106,7 +112,7 @@ def row_text(g: dict) -> list[str]:
     dev = g["deviations"]
     return [g["name"], str(g["runs"]), f"{g['minutes']:.1f}분", pct(g["accuracy"]), pct(g["exact"]),
             sec(g["reach_median"]), sec(g["reach_p90"]), "-" if g["missed"] is None else str(g["missed"]),
-            "-" if g["unseen"] is None else str(g["unseen"]),
+            *("-" if g[k] is None else str(g[k]) for k in ("unseen", "screen_unseen", "wrong_passed")),
             f"{g['found']}/{dev}" if dev else "-", f"{g['type_ok']}/{g['found']}" if dev else "-",
             f"{g['ret_ok']}/{g['found']}" if dev else "-", sec(g["detect_median"]) if dev else "-",
             f"{g['false']}건 ({10 * g['false'] / g['minutes']:.1f})" if g["minutes"] else str(g["false"])]

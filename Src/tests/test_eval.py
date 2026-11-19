@@ -58,6 +58,28 @@ def test_unseen_counts_cues_jumped_over(sample_cues):
     assert rep.unseen == 1 and rep.missed == 0
 
 
+def test_screen_unseen_counts_grouped_and_passed_lines(sample_cues):
+    """휴대폰 자막 기준: 지나간 줄 함께 띄우기로 뜬 줄은 본 것으로 센다. 그 무렵 말하지 않은 줄을 띄우면 잘못 띄움."""
+    lines = [c for c in sample_cues if c.type in ("dialogue", "lyric")][:4]
+    labels = [(i * 3.0, c.id) for i, c in enumerate(lines)]
+    timeline = [(4.0, lines[1].id), (10.0, lines[3].id)]           # lines[2] 는 화면에 안 뜸
+    assert evaluate(timeline, labels, sample_cues, end_sec=11.5).screen_unseen == 1
+    rep = evaluate(timeline, labels, sample_cues, end_sec=11.5, passed=[(10.0, [lines[2].id])])
+    assert rep.unseen == 1 and rep.screen_unseen == 0 and rep.wrong_passed == 0
+    early = evaluate(timeline, labels, sample_cues, end_sec=11.5, passed=[(4.0, [lines[2].id])])   # 말하기 전에 띄움
+    assert early.wrong_passed == 1
+
+
+def test_short_followers_match_the_screen():
+    """짧은 대사 묶어 보이기 (ui/src/shortLines.ts 와 같음): 음향 줄은 건너뛰고, 5음절 이하 대사를 2줄까지."""
+    from engine.cue_loader import parse_cues
+    from eval.metrics import short_followers
+
+    cues = parse_cues("id,order,type,speaker,text\n1,1,dialogue,가,오늘은 비가 정말 많이 오네요\n2,2,dialogue,나,그러게\n"
+                      "3,3,sound,,(천둥)\n4,4,dialogue,가,응\n5,5,dialogue,나,짧다\n")
+    assert short_followers(cues, 1) == [2, 4] and short_followers(cues, 5) == []
+
+
 def test_suite_table(tmp_path, sample_cues):
     """세트 파일 하나로 묶음마다 위치 추적 · 이탈 감지 값을 모아 표를 만든다."""
     import json
@@ -83,6 +105,7 @@ def test_suite_table(tmp_path, sample_cues):
     ]}, ensure_ascii=False), encoding="utf-8")
     plain, with_truth = suite.run(tmp_path / "set.json")
     assert plain["accuracy"] == 1.0 and plain["missed"] == plain["unseen"] == 0 and plain["false"] == 0 and plain["deviations"] == 0
+    assert plain["screen_unseen"] == plain["wrong_passed"] == 0
     assert with_truth["deviations"] == 1 and with_truth["found"] == 0 and with_truth["accuracy"] == 1.0
     table = suite.markdown([plain, with_truth])
     assert "| 정상 | 1 |" in table and "0/1" in table

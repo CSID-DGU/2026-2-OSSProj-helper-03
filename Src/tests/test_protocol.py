@@ -23,6 +23,9 @@ def test_position_update_fields():
     msg = position_update(845, 0.923, 1400.7, "빛이 다시")
     assert same_fields(msg, "PositionUpdate")
     assert msg["type"] == "position.update" and msg["confidence"] == 0.92 and msg["latency_ms"] == 1400
+    assert "passed_ids" not in msg                                   # 지나간 줄이 없으면 안 보냄
+    with_passed = position_update(847, 0.9, 1200, "", [846])
+    assert same_fields(with_passed, "PositionUpdate") and with_passed["passed_ids"] == [846]
 
 
 def test_deviation_alert_fields():

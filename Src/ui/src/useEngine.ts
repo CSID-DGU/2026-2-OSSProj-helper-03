@@ -56,6 +56,8 @@ const RECOGNITION_LOG_MAX = 300
 export interface EngineState {
   connection: Connection
   position: PositionUpdate | null
+  /** 지나간 줄 함께 띄우기: 지금 위치로 오면서 화면에 안 뜨고 지나간 줄. 위치가 다시 바뀌면 그 이동의 것으로 바뀐다 */
+  passedIds: number[]
   /** 가장 최근 이탈 알림. 복귀하면 return_cue_id가 채워진 상태로 남는다. */
   deviation: DeviationAlert | null
   /** deviation을 받은 시각 (epoch ms). 복귀 알림이면 복귀 시각이 된다. */
@@ -76,6 +78,7 @@ export interface EngineState {
 const initialState: EngineState = {
   connection: 'connecting',
   position: null,
+  passedIds: [],
   deviation: null,
   deviationAt: null,
   deviationLog: [],
@@ -101,8 +104,12 @@ function reducer(state: EngineState, action: Action): EngineState {
       const { msg, at } = action
       const next = { ...state, lastMessageAt: at }
       switch (msg.type) {
-        case 'position.update':
-          return { ...next, position: msg, recognitionLog: logRecognition(state.recognitionLog, msg, at) }
+        case 'position.update': {
+          // 같은 줄에 머무는 갱신에는 지나간 줄이 없으므로, 위치가 바뀔 때만 그 이동의 지나간 줄로 바꾼다
+          const moved = msg.cue_id !== state.position?.cue_id
+          const passedIds = moved ? (msg.passed_ids ?? []) : state.passedIds
+          return { ...next, position: msg, passedIds, recognitionLog: logRecognition(state.recognitionLog, msg, at) }
+        }
         case 'deviation.alert':
           return { ...next, deviation: msg, deviationAt: at, deviationLog: logDeviation(state.deviationLog, msg, at) }
         case 'input.status':

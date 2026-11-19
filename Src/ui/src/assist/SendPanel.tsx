@@ -10,6 +10,8 @@ interface Props {
   cue: Cue | undefined
   /** 함께 띄울 짧은 대사 */
   followers: Cue[]
+  /** 지금 줄 앞에 함께 띄울 지나간 줄 (AI 추정이 화면에 안 띄우고 지나간 줄) */
+  passed: Cue[]
   /** 마지막으로 송출한 대본 큐 */
   sentId: number | null
   /** 대본 이탈 중이면 추천이 오래된 위치일 수 있음 */
@@ -21,7 +23,7 @@ interface Props {
 const typing = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
 
-export function SendPanel({ cue, followers, sentId, deviating, onSend }: Props) {
+export function SendPanel({ cue, followers, passed, sentId, deviating, onSend }: Props) {
   // 단축키 처리는 최신 값으로 (매번 리스너를 다시 달지 않게)
   const latest = useRef({ cue, onSend })
   useEffect(() => {
@@ -56,6 +58,11 @@ export function SendPanel({ cue, followers, sentId, deviating, onSend }: Props) 
             <>
               <span className="send-id">#{cue.id}</span>
               <span className="send-text">
+                {passed.map((p) => (
+                  <span key={p.id} className="send-passed" title="AI 추정이 화면에 안 띄우고 지나간 줄. 함께 송출됩니다">
+                    #{p.id} (지나간 줄) {p.text}
+                  </span>
+                ))}
                 {cue.text}
                 {followers.map((f) => (
                   <span key={f.id} className="send-follower">

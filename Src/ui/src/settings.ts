@@ -22,3 +22,12 @@ export const AUDIO_SYNC_TOLERANCE_SEC = 0.4
 export const SHORT_LINE_SYLLABLES = 5
 /** 함께 띄우는 짧은 대사는 이 줄 수까지 */
 export const SHORT_LINE_MAX_GROUPED = 2
+
+/**
+ * 지나간 줄 함께 띄우기: AI 추정이 줄을 건너뛰고 앞으로 가면서 화면에 한 번도 안 띄운 줄(엔진이 말한 것으로 본 줄, passed_ids)을
+ * 지금 줄 앞에 함께 띄운다. 이 줄 수까지 (지금 줄에 가까운 줄부터).
+ * 빠른 주고받기나 노래에서 한 조각에 다음 줄까지 들어가면 그 사이 줄이 안 뜬다. 저장 기록으로 다시 돌리면 고정 시험 세트
+ * (원본과 이탈 녹음 6벌)에서 휴대폰 자막에 못 뜬 대사가 짧은 대사 묶어 보이기만으로는 22건, 지나간 줄까지 띄우면 1건.
+ * 그 대신 말하기 전에 띄운 줄이 2건 (eval/suite.py 의 '화면 안 보임', '잘못 띄움').
+ */
+export const PASSED_MAX_SHOWN = 2

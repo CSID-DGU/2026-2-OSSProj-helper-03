@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react'
 import type { Cue } from '../cues'
 import { INPUT_LABEL, type InputChoice } from '../inputs'
 import type { SubtitleSource } from '../protocol'
-import { RETURN_HIGHLIGHT_MS, STALE_MS } from '../settings'
+import { PASSED_MAX_SHOWN, RETURN_HIGHLIGHT_MS, STALE_MS } from '../settings'
 import type { EngineState } from '../useEngine'
 import { useNow } from '../useNow'
 import { shortFollowers } from '../shortLines'
@@ -44,8 +44,8 @@ interface Props {
   onSendSubtitle: (text: string, source: SubtitleSource) => void
   /** 위치 맞추기: AI 추정 위치를 이 큐로 */
   onJump: (cueId: number) => void
-  /** 대본 큐 송출 (오퍼레이터가 확인하고 누름) */
-  onSendCue: (cueId: number, groupedIds: number[]) => void
+  /** 대본 큐 송출 (오퍼레이터가 확인하고 누름). passedIds = 지금 줄 앞에 함께 띄우는 지나간 줄 */
+  onSendCue: (cueId: number, groupedIds: number[], passedIds: number[]) => void
 }
 
 export function AssistScreen(props: Props) {
@@ -53,11 +53,12 @@ export function AssistScreen(props: Props) {
   const now = useNow()
   const [sent, setSent] = useState<SentSubtitle[]>([])
   /** 마지막으로 송출한 대본 큐 */
-  const [sentCue, setSentCue] = useState<{ id: number; grouped: number[]; at: number } | null>(null)
+  const [sentCue, setSentCue] = useState<{ id: number; grouped: number[]; passed: number[]; at: number } | null>(null)
   /** 닫은 엔진 오류 (받은 시각). 같은 오류는 다시 띄우지 않는다 */
   const [dismissedErrorAt, setDismissedErrorAt] = useState<number | null>(null)
   const cueById = useMemo(() => new Map(cues.map((c) => [c.id, c])), [cues])
-  const { position, deviation, deviationAt, deviationLog, recognitionLog, input, connection, lastMessageAt, error } = engine
+  const { position, passedIds, deviation, deviationAt, deviationLog, recognitionLog, input, connection, lastMessageAt, error } =
+    engine
   const shownError = error && error.at !== dismissedErrorAt ? error : null
 
   const stale = connection === 'open' && lastMessageAt !== null && now - lastMessageAt > STALE_MS
@@ -85,10 +86,24 @@ export function AssistScreen(props: Props) {
   // 송출 칸: AI 추천 큐 (복귀 직후면 복귀 큐). 송출은 오퍼레이터가 확인하고 누른다
   const suggestId = returnId ?? position?.cue_id ?? null
   const suggestFollowers = useMemo(() => shortFollowers(cues, suggestId), [cues, suggestId])
+  const sentIds = useMemo(() => (sentCue ? [sentCue.id, ...sentCue.grouped, ...sentCue.passed] : []), [sentCue])
+  // 지나간 줄 함께 띄우기: AI 추정이 지금 줄로 오면서 화면에 안 띄운 줄 (엔진이 말한 것으로 본 줄). 지금 줄 앞에 함께 띄운다.
+  // 복귀 큐를 추천할 때는 쓰지 않고, 이미 송출한 줄은 뺀다
+  const suggestPassed = useMemo(
+    () =>
+      suggestId !== null && suggestId === position?.cue_id
+        ? passedIds
+            .filter((id) => !sentIds.includes(id))
+            .slice(-PASSED_MAX_SHOWN)
+            .flatMap((id) => cueById.get(id) ?? [])
+        : [],
+    [suggestId, position?.cue_id, passedIds, sentIds, cueById],
+  )
   const sendCue = (cue: Cue) => {
     const grouped = suggestFollowers.map((f) => f.id)
-    onSendCue(cue.id, grouped)
-    setSentCue({ id: cue.id, grouped, at: Date.now() })
+    const passed = cue.id === suggestId ? suggestPassed.map((p) => p.id) : []
+    onSendCue(cue.id, grouped, passed)
+    setSentCue({ id: cue.id, grouped, passed, at: Date.now() })
   }
 
   // 휴대폰 미리보기: 가장 마지막에 송출한 것 (대본 큐 또는 애드리브 임시 자막)
@@ -141,8 +156,8 @@ export function AssistScreen(props: Props) {
           threshold={threshold}
           returnId={returnId}
           paused={noInput}
-          followerIds={followers.map((f) => f.id)}
-          sentIds={sentCue ? [sentCue.id, ...sentCue.grouped] : []}
+          followerIds={[...suggestPassed, ...followers].map((f) => f.id)}
+          sentIds={sentIds}
           onJump={onJump}
         />
 
@@ -152,6 +167,7 @@ export function AssistScreen(props: Props) {
           <SendPanel
             cue={suggestId !== null ? cueById.get(suggestId) : undefined}
             followers={suggestFollowers}
+            passed={suggestPassed}
             sentId={sentCue?.id ?? null}
             deviating={deviating}
             onSend={sendCue}
@@ -165,6 +181,7 @@ export function AssistScreen(props: Props) {
           <PhonePreview
             cue={!showTemp && sentCue ? cueById.get(sentCue.id) : undefined}
             followers={!showTemp && sentCue ? sentCue.grouped.flatMap((id) => cueById.get(id) ?? []) : []}
+            passed={!showTemp && sentCue ? sentCue.passed.flatMap((id) => cueById.get(id) ?? []) : []}
             temp={showTemp ? lastTemp.text : undefined}
           />
           <DeviationTimeline log={deviationLog} now={now} />

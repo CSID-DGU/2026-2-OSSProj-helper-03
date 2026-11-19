@@ -1,10 +1,15 @@
 """엔진 → 화면 메시지. 기준: ui/src/protocol.ts (필드 이름·형식을 그대로 맞춘다)."""
 
 
-def position_update(cue_id: int, confidence: float, latency_ms: int, transcript: str = "") -> dict:
-    return {"type": "position.update", "cue_id": int(cue_id),
-            "confidence": round(max(0.0, min(1.0, confidence)), 2),
-            "latency_ms": max(0, int(latency_ms)), "transcript": transcript}
+def position_update(cue_id: int, confidence: float, latency_ms: int, transcript: str = "",
+                    passed_ids: list[int] | None = None) -> dict:
+    """passed_ids: 이번 이동으로 화면에 안 뜨고 지나간 줄 중 말한 것으로 보이는 줄 (있을 때만 보냄)."""
+    msg = {"type": "position.update", "cue_id": int(cue_id),
+           "confidence": round(max(0.0, min(1.0, confidence)), 2),
+           "latency_ms": max(0, int(latency_ms)), "transcript": transcript}
+    if passed_ids:
+        msg["passed_ids"] = [int(i) for i in passed_ids]
+    return msg
 
 
 def deviation_alert(deviation_type: str, since: int, return_cue_id: int | None) -> dict:
