@@ -115,6 +115,22 @@ def test_passed_lines_leave_out_skipped_ones(sample_cues):
     assert [c.id for c in step.skipped] == [lines[1].id] and [c.id for c in step.passed] == [lines[2].id]
 
 
+def test_confidence_drops_when_position_is_doubtful(sample_cues):
+    """화면 줄을 믿을 만한 정도: 약하게 맞아서 옮겼거나 큰 이동 후보가 기다리면 0.5 (화면 '불확실'), 오퍼레이터가 맞추면 1."""
+    lines = dialogue(sample_cues)
+    al = Aligner(sample_cues)
+    al.update(lines[0].text)
+    assert al.confidence == 1.0
+    al.update("그래두 문 열어 누가 올지 몰라")                      # 다음 줄과 약하게 맞음 (점수 80 미만)
+    assert al.current.id == lines[1].id and al.confidence == 0.5
+    al.update(lines[1].text)                                      # 같은 줄을 제대로 들음
+    assert al.confidence == 1.0
+    al.update(lines[8].text)                                      # 먼 줄 한 번: 큰 이동 후보만 생김
+    assert al.current.id == lines[1].id and al.confidence == 0.5
+    al.jump_to(lines[2].id)
+    assert al.confidence == 1.0
+
+
 def test_unsaid_line_sharing_words_is_not_passed():
     """말하지 않은 대사가 다음 줄과 낱말 몇 개만 같으면(부분 일치 점수는 넘어서 누락으로는 안 셈) 지나간 줄로도 안 알린다."""
     from engine.cue_loader import parse_cues

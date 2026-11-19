@@ -105,7 +105,7 @@ export type ClientMessage =
 export interface PositionUpdate {
   type: 'position.update'
   cue_id: number
-  /** 신뢰도 0~1 */
+  /** 신뢰도 0~1: 화면 줄을 믿을 만한 정도. 엔진은 마지막으로 위치를 확인한 점수를 보내고, 의심스러우면 0.5 ('불확실') */
   confidence: number
   /** 발화부터 이 메시지까지 걸린 시간 */
   latency_ms: number
