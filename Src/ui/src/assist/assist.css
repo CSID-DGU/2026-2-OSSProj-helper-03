@@ -3,15 +3,15 @@
 .assist {
   --gap: 12px;
   --radius: 8px;
-  --row: #2f323c;
+  --row: #2a2d36;
   --song: #8fd16a; /* 노래 구간 = 연두. 복귀 파랑과 구분 */
-  /* 이탈 중 = 빨강, 복귀 = 파랑 */
+  /* 이탈 중 = 빨강, 복귀 = 파랑. 어두운 공연장에서 눈부시지 않게 밝은 면은 쓰지 않는다 */
   --during-border: #e5484d;
   --during-bg: #3b1a1c;
   --during-text: #ffd2d2;
   --returned-border: #4c8dff;
-  --returned-bg: #e8f0ff;
-  --returned-text: #0f3a8a;
+  --returned-bg: #10213f;
+  --returned-text: #cfe0ff;
   --returned-light: #a9c8ff;
 
   display: grid;
@@ -186,8 +186,8 @@ button.small {
   align-items: baseline;
   padding: 10px 12px;
   margin: 2px 0;
-  font-size: 15px;
-  color: #dcdee6; /* 대사는 잘 읽히게 밝게. 번호·화자만 흐리게 */
+  font-size: 16px;
+  color: #d0d2da; /* 대사는 잘 읽히게 밝게. 번호·화자만 흐리게 */
   border: 1px solid transparent;
   border-radius: 6px;
 }
@@ -272,7 +272,7 @@ button:disabled {
 
 .cue-return:not(.cue-current) {
   color: var(--text);
-  border-color: var(--returned-bg);
+  border-color: var(--returned-border);
 }
 
 .cue-tags {
@@ -293,9 +293,10 @@ button:disabled {
 }
 
 .tag-return {
-  padding: 1px 8px;
+  padding: 0 7px;
   color: var(--returned-text);
   background: var(--returned-bg);
+  border: 1px solid var(--returned-border);
   border-radius: 4px;
 }
 
@@ -323,7 +324,7 @@ button:disabled {
 
 .card-title {
   margin: 0;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 700;
   color: inherit;
 }
@@ -371,7 +372,7 @@ button:disabled {
 .card-returned {
   color: var(--returned-text);
   background: var(--returned-bg);
-  border-color: var(--returned-border);
+  border: 2px solid var(--returned-border);
   animation: arrive 0.4s ease-out;
 }
 
@@ -390,6 +391,10 @@ button:disabled {
 
 .card-error .card-title {
   color: #ffb3ae;
+}
+
+.card-returned .card-cue {
+  color: var(--returned-light);
 }
 
 @keyframes arrive {
@@ -491,7 +496,7 @@ button:disabled {
   50% {
     box-shadow:
       inset 0 0 0 8px var(--edge),
-      inset 0 0 48px var(--edge);
+      inset 0 0 24px var(--edge);
   }
 }
 
@@ -700,7 +705,7 @@ button:disabled {
 }
 
 .send-id {
-  font-size: 20px;
+  font-size: 30px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: #c9c3ff;
@@ -711,7 +716,7 @@ button:disabled {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
 }
 
@@ -741,13 +746,45 @@ button.send-button {
   padding: 10px 16px;
   font-size: 18px;
   font-weight: 700;
-  background: var(--accent);
+  color: #e6e2ff;
+  background: #3d3584; /* 꽉 찬 밝은 보라는 어두운 객석에서 눈에 띄어서 한 단계 어둡게 */
+  border: 1px solid var(--accent);
 }
 
 .send-key {
   font-size: 11px;
   font-weight: 400;
   opacity: 0.8;
+}
+
+/* 다음 상황 자막 (음향 · 암전 · 안내): AI가 추천하지 않는 줄이라 오퍼레이터가 소리를 듣고 따로 송출 */
+.send-desc {
+  padding-top: 8px;
+  border-top: 1px solid #383b46;
+}
+
+.send-desc .send-cue {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.send-desc-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.send-desc-text {
+  font-size: 15px; /* 음향 · 암전은 관객 화면처럼 주황색 (.phone-desc) */
+}
+
+button.send-desc-button {
+  min-width: 96px;
+  padding: 6px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffe2bf;
+  background: #4a3214;
+  border: 1px solid #b87a2c;
 }
 
 .tag-sent {
@@ -850,7 +887,8 @@ button.send-button {
 }
 
 .adlib-actions button:not(.ghost) {
-  background: var(--returned-border);
+  background: #24467f;
+  border: 1px solid var(--returned-border);
 }
 
 .adlib-sent {
@@ -933,6 +971,11 @@ button.send-button {
   text-align: center;
 }
 
+/* 상황 설명 자막 (음향 · 암전): 실제 관객 화면처럼 주황색 */
+.phone-desc {
+  color: #f0a040;
+}
+
 .phone-sub-dim {
   opacity: 0.35;
 }
@@ -987,7 +1030,7 @@ button.send-button {
   }
 
   .card-cue {
-    font-size: 44px;
+    font-size: 52px;
   }
 }
 
@@ -1005,6 +1048,15 @@ button.send-button {
 .phone-sub-prev {
   display: block;
   margin-bottom: 6px;
+}
+
+/* 화면 밝기: 전체 위에 덮는 검은 막 (클릭은 통과) */
+.dim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  background: #000;
 }
 
 /* 엔진 오류 (회차를 못 엶 · 음성인식이 계속 실패) */

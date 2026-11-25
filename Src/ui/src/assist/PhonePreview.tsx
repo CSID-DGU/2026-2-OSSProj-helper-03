@@ -23,6 +23,9 @@ function subtitle(cue: Cue): string {
   return cue.text
 }
 
+/** 실제 관객 화면(11/13 현장 체험)처럼 대사 · 가사는 흰색, 상황 설명(음향 · 암전)은 주황색 */
+const tone = (cue: Cue) => (cue.type === 'sound' || cue.type === 'blackout' ? ' phone-desc' : '')
+
 export function PhonePreview({ cue, followers = [], passed = [], temp }: Props) {
   return (
     <section className="phone-wrap" aria-label="관객 휴대폰 자막 미리보기">
@@ -38,14 +41,14 @@ export function PhonePreview({ cue, followers = [], passed = [], temp }: Props) 
             <p className="phone-sub">
               {cue &&
                 passed.map((p) => (
-                  <span key={p.id} className="phone-sub-prev">
+                  <span key={p.id} className={`phone-sub-prev${tone(p)}`}>
                     {subtitle(p)}
                   </span>
                 ))}
-              {cue ? subtitle(cue) : '…'}
+              {cue ? <span className={tone(cue).trim() || undefined}>{subtitle(cue)}</span> : '…'}
               {cue &&
                 followers.map((f) => (
-                  <span key={f.id} className="phone-sub-next">
+                  <span key={f.id} className={`phone-sub-next${tone(f)}`}>
                     {subtitle(f)}
                   </span>
                 ))}

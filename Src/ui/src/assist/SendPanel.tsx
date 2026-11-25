@@ -1,6 +1,8 @@
 // 자막 송출. AI가 추천한 큐를 오퍼레이터가 확인하고 직접 내보낸다 (자동 송출 없음, 마지막 판단은 사람).
 // 복귀 직후에는 복귀 큐를 추천한다. 위치가 틀리면 대본 목록에서 줄을 눌러 고친 뒤 송출한다.
 // 단축키 Space (입력칸에 쓰는 중이 아닐 때).
+// 추천 큐 바로 뒤에 상황 설명 줄(음향 · 암전 · 안내)이 있으면 '다음 상황 자막'으로 함께 보여 준다.
+// AI는 대사 · 가사만 따라가서 이 줄은 추천되지 않으므로, 오퍼레이터가 소리를 듣고 따로 누른다.
 
 import { useEffect, useRef } from 'react'
 import type { Cue } from '../cues'
@@ -12,18 +14,21 @@ interface Props {
   followers: Cue[]
   /** 지금 줄 앞에 함께 띄울 지나간 줄 (AI 추정이 화면에 안 띄우고 지나간 줄) */
   passed: Cue[]
-  /** 마지막으로 송출한 대본 큐 */
-  sentId: number | null
+  /** 다음 상황 자막: 추천 큐 바로 뒤의 상황 설명 줄 중 아직 송출하지 않은 첫 줄 */
+  desc: Cue | undefined
+  /** 이번 회차에 송출한 대본 큐 */
+  sentIds: number[]
   /** 대본 이탈 중이면 추천이 오래된 위치일 수 있음 */
   deviating: boolean
   onSend: (cue: Cue) => void
+  onSendDesc: (cue: Cue) => void
 }
 
 // 글자를 쓰는 칸에서는 Space 가 띄어쓰기
 const typing = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
 
-export function SendPanel({ cue, followers, passed, sentId, deviating, onSend }: Props) {
+export function SendPanel({ cue, followers, passed, desc, sentIds, deviating, onSend, onSendDesc }: Props) {
   // 단축키 처리는 최신 값으로 (매번 리스너를 다시 달지 않게)
   const latest = useRef({ cue, onSend })
   useEffect(() => {
@@ -44,7 +49,7 @@ export function SendPanel({ cue, followers, passed, sentId, deviating, onSend }:
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const sent = cue !== undefined && cue.id === sentId
+  const sent = cue !== undefined && sentIds.includes(cue.id)
 
   return (
     <section className={`panel send ${deviating ? 'send-deviating' : ''}`} aria-label="자막 송출">
@@ -80,6 +85,19 @@ export function SendPanel({ cue, followers, passed, sentId, deviating, onSend }:
           <span className="send-key">Space</span>
         </button>
       </div>
+      {desc && (
+        <div className="send-row send-desc">
+          <div className="send-cue">
+            <span className="send-desc-label">다음 상황 자막</span>
+            <span className={`send-desc-text${desc.type === 'notice' ? '' : ' phone-desc'}`}>
+              #{desc.id} {desc.text}
+            </span>
+          </div>
+          <button className="send-desc-button" onClick={() => onSendDesc(desc)}>
+            송출
+          </button>
+        </div>
+      )}
     </section>
   )
 }
