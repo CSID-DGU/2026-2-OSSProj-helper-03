@@ -120,3 +120,26 @@ def test_max_sessions(monkeypatch):
             assert "다른 사람" in err["message"]
             a.send_json({"type": "session.end", "show_id": "a"})
     assert not srv._live
+
+
+def test_max_sessions_while_starting(monkeypatch):
+    """회차를 여는 사이(엔진 준비 중)에 들어온 다른 회차도 동시 회차 제한에 걸린다.
+    예전에는 여는 중인 회차를 세지 않아서 둘 다 열렸다 (11/26 CI 가 느릴 때 test_max_sessions 가 실패한 원인)."""
+    monkeypatch.setenv("HELPER_MAX_SESSIONS", "1")
+    real = srv.start_session
+
+    def slow(msg, emit):
+        time.sleep(1.0)          # 엔진 준비가 오래 걸리는 때
+        return real(msg, emit)
+
+    monkeypatch.setattr(srv, "start_session", slow)
+    with TestClient(srv.app) as client:
+        with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+            a.send_json(start_msg("a", input="text"))
+            time.sleep(0.2)      # a 가 아직 여는 중
+            b.send_json(start_msg("b", input="text"))
+            got = receive_until(b, lambda g: any(m["type"] in ("engine.error", "input.status") for m in g), limit=20)
+            assert got[-1]["type"] == "engine.error" and "다른 사람" in got[-1]["message"]
+            receive_until(a, lambda g: any(m["type"] == "input.status" for m in g))
+            a.send_json({"type": "session.end", "show_id": "a"})
+    assert not srv._live and srv._starting == 0
