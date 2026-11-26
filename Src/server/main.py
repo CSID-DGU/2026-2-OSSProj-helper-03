@@ -53,6 +53,7 @@ log = logging.getLogger("helper.server")
 _engines: dict[str, STTEngine] = {}
 _audio_file: Path | None = None   # 진행 중인 녹음 재생 회차의 녹음 (GET /session/audio)
 _live: set[Pipeline] = set()      # 지금 돌고 있는 회차 (HELPER_MAX_SESSIONS)
+_starting = 0                     # 여는 중인 회차 수. 엔진을 준비하는 사이에 다른 회차가 열려 제한을 넘지 않게 자리를 잡아 둔다
 
 
 @asynccontextmanager
@@ -197,6 +198,7 @@ def minutes(sec: float) -> str:
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
+    global _starting
     await ws.accept()
     code = env("HELPER_ACCESS_CODE")
     if code and not hmac.compare_digest(ws.query_params.get("code", ""), code):
@@ -269,10 +271,11 @@ async def ws_endpoint(ws: WebSocket):
             kind = msg.get("type")
             if kind == "session.start":
                 stop_pipe()
-                if max_sessions and len(_live) >= max_sessions:
+                if max_sessions and len(_live) + _starting >= max_sessions:
                     emit(engine_error(f"지금 다른 사람이 쓰고 있습니다 (동시에 {max_sessions}회차까지). "
                                       "잠시 뒤 다시 시작하세요", "session.start"))
                     continue
+                _starting += 1   # 확인과 자리 잡기 사이에 await 가 없어서 다른 연결이 끼어들지 못한다
                 try:
                     pipe = await loop.run_in_executor(None, start_session, msg, emit)
                 except Exception as ex:   # 키 없음 · 파일 없음 · 마이크 오류 등: 서버 로그와 화면에 알린다
@@ -280,6 +283,8 @@ async def ws_endpoint(ws: WebSocket):
                     emit(engine_error(str(ex), "session.start"))   # 원인만. '회차를 못 엶'은 화면이 붙인다
                     pipe = None
                     continue
+                finally:
+                    _starting -= 1
                 _live.add(pipe)
                 if limit_sec > 0:
                     limit_task = asyncio.create_task(time_limit(pipe))
