@@ -43,7 +43,7 @@ ui/
 │   └── sample_cues.csv    직접 만든 샘플 대본 30큐
 └── src/
     ├── protocol.ts        WebSocket 메시지 타입 (수행계획서 기준)
-    ├── cues.ts            큐 데이터 타입, 큐 CSV 읽기
+    ├── cues.ts            큐 데이터 타입, 큐 CSV와 자막 JSON 읽기
     ├── settings.ts        화면 기준값 (불확실 기준, 복귀 표시 시간 등)
     ├── useEngine.ts       엔진 연결 훅 (자동 재연결, 받은 메시지 → 화면 상태)
     ├── StartPanel.tsx     임시 시작 패널: 공연 이름, 큐 파일, 소리 입력 (준비 화면으로 교체 예정)
@@ -161,3 +161,22 @@ id,order,type,speaker,text
 ```
 
 `type`은 `dialogue/lyric/sound/blackout/notice`나 `대사/가사/음향/암전/안내` 둘 다 받습니다. 열 구성은 데이터 담당과 확정되면 `src/cues.ts`의 `CUE_CSV_COLUMNS`를 고칩니다.
+
+## 오롯플래닛 자막 파일 (JSON, #46)
+
+시작 화면의 큐 파일 칸에서 오롯플래닛 자막 파일(`.json`)도 고를 수 있습니다. 내용이 `{`로 시작하면 자막 파일로 읽습니다(`src/cues.ts`의 `parseCueFile`).
+
+```json
+{
+  "language": ["kor", "eng"],
+  "contents": [
+    { "idx": 1, "subtitles": [{ "lang": "kor", "text": "안녕하세요" }, { "lang": "eng", "text": "Hello" }] }
+  ],
+  "advertisements": [{ "image_url": "https://..." }]
+}
+```
+
+- `idx`가 큐 번호입니다. 송출 신호 `index`의 `subtitle_idx`와 같은 번호라 따로 번호를 맞출 필요가 없습니다. 순서는 파일에 적힌 순서입니다.
+- `kor` 문장을 대본 목록에 보이고 위치 추적에 씁니다. `kor` 문장이 빈 줄은 안내로 둡니다.
+- 자막 파일에는 유형과 화자가 없어서 모두 대사로 봅니다. 줄에 `type`, `speaker` 칸을 더하면 그 값을 씁니다. 유형을 어디서 받을지는 #46에서 정하는 중입니다.
+- 엔진에는 파일 내용을 그대로 `cue_csv` 칸에 보내고, 엔진도 같은 규칙으로 읽습니다.

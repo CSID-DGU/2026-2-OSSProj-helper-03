@@ -96,3 +96,50 @@ export function parseCueCsv(source: string): Cue[] {
     })
     .sort((a, b) => a.order - b.order)
 }
+
+/** 큐 파일 내용 → Cue 목록. "{"로 시작하면 오롯플래닛 자막 파일(JSON), 아니면 CSV. */
+export function parseCueFile(source: string): Cue[] {
+  return /^[﻿\s]*\{/.test(source) ? parseSubtitleJson(source) : parseCueCsv(source)
+}
+
+/** 자막 파일 한 줄 (오롯플래닛 형식). type, speaker는 우리가 더해 쓸 수 있는 칸 (#46에서 정하는 중) */
+interface SubtitleLine {
+  idx?: unknown
+  subtitles?: { lang?: unknown; text?: unknown }[]
+  type?: unknown
+  speaker?: unknown
+}
+
+/**
+ * 오롯플래닛 자막 파일(JSON)을 Cue 목록으로. 엔진 engine/cue_loader.py parse_subtitle_json과 같은 규칙.
+ * - idx를 큐 번호로 씀 (송출 신호 index의 subtitle_idx와 같은 번호). 순서는 파일 순서
+ * - 추적 대사는 lang(기본 kor) 문장. 비어 있으면 안내(notice)로 둬서 추적하지 않음
+ * - 유형, 화자가 없으면 대사로 봄
+ */
+export function parseSubtitleJson(source: string, lang = 'kor'): Cue[] {
+  let data: unknown
+  try {
+    data = JSON.parse(source.replace(/^﻿/, ''))
+  } catch (e) {
+    throw new Error(`자막 파일(JSON)을 읽을 수 없습니다: ${e instanceof Error ? e.message : String(e)}`)
+  }
+  const contents = (data as { contents?: unknown } | null)?.contents
+  if (!Array.isArray(contents) || contents.length === 0) throw new Error('자막 파일에 "contents" 목록이 없습니다.')
+
+  const seen = new Set<number>()
+  const cues = contents.map((item: SubtitleLine, i): Cue => {
+    const n = i + 1
+    const idx = item?.idx
+    if (typeof idx !== 'number' || !Number.isInteger(idx)) throw new Error(`${n}번째 자막: idx가 숫자가 아닙니다.`)
+    if (seen.has(idx)) throw new Error(`${n}번째 자막: 앞에서 이미 나온 idx(${idx})입니다.`)
+    seen.add(idx)
+    const sub = (Array.isArray(item.subtitles) ? item.subtitles : []).find((s) => s?.lang === lang)
+    const text = String(sub?.text ?? '').trim()
+    const rawType = String(item.type ?? '').trim()
+    const type = rawType ? TYPE_ALIASES[rawType] : text ? 'dialogue' : 'notice'
+    if (!type) throw new Error(`${n}번째 자막 (idx ${idx}): 알 수 없는 유형 "${rawType}"`)
+    return { id: idx, order: n, type, speaker: String(item.speaker ?? '').trim(), text }
+  })
+  if (!cues.some((c) => c.text)) throw new Error(`자막 파일에 ${lang} 문장이 없습니다 (위치 추적에 쓰는 언어).`)
+  return cues
+}

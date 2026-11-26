@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 import sampleCsv from '../mock/sample_cues.csv?raw'
-import { parseCueCsv, type Cue } from './cues'
+import { parseCueFile, type Cue } from './cues'
 import { AVAILABLE_INPUTS, INPUT_OPTIONS, type InputChoice } from './inputs'
 import { ENGINE_URL, NEED_CODE, type Connection } from './useEngine'
 
@@ -32,7 +32,7 @@ function loadSaved(): Saved {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Saved | null
     if (saved && saved.csv && saved.cueFile) {
-      parseCueCsv(saved.csv)   // 형식이 깨졌으면 샘플로
+      parseCueFile(saved.csv)   // 형식이 깨졌으면 샘플로
       return { ...saved, input: AVAILABLE_INPUTS.includes(saved.input) ? saved.input : DEFAULT_INPUT }
     }
   } catch {
@@ -53,7 +53,7 @@ export interface StartRequest {
   name: string
   cueFile: string
   cues: Cue[]
-  /** 큐 파일 내용 (엔진에 그대로 보냄) */
+  /** 큐 파일 내용 (CSV 또는 자막 JSON, 엔진에 그대로 보냄) */
   csv: string
   input: InputChoice
   /** '내 녹음 파일'로 고른 파일 */
@@ -75,14 +75,14 @@ export function StartPanel({ connection, code, onCode, error: startError, onStar
   const [name, setName] = useState(initial.name)
   const [cueFile, setCueFile] = useState(initial.cueFile)
   const [csv, setCsv] = useState(initial.csv)
-  const [cues, setCues] = useState<Cue[]>(() => parseCueCsv(initial.csv))
+  const [cues, setCues] = useState<Cue[]>(() => parseCueFile(initial.csv))
   const [error, setError] = useState<string | null>(null)
   const [input, setInput] = useState<InputChoice>(initial.input)
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [codeDraft, setCodeDraft] = useState(code)
 
   const applyCsv = (fileName: string, text: string) => {
-    setCues(parseCueCsv(text))
+    setCues(parseCueFile(text))
     setCueFile(fileName)
     setCsv(text)
     setError(null)
@@ -136,8 +136,8 @@ export function StartPanel({ connection, code, onCode, error: startError, onStar
       </label>
 
       <label>
-        자막 큐 파일 (CSV)
-        <input type="file" accept=".csv,text/csv" onChange={(e) => loadFile(e.target.files?.[0])} />
+        자막 큐 파일 (CSV 또는 자막 JSON)
+        <input type="file" accept=".csv,text/csv,.json,application/json" onChange={(e) => loadFile(e.target.files?.[0])} />
       </label>
       <p className={error ? 'error' : 'muted'}>
         {error ?? `${cueFile} · 큐 ${cues.length}개`}
