@@ -16,9 +16,9 @@ interface Props {
   returnId: number | null
   /** 음향 입력이 없으면 현재 줄 표시를 흐리게 */
   paused: boolean
-  /** 지금 줄과 함께 휴대폰 자막에 띄우는 줄 (뒤의 짧은 대사, 앞의 지나간 줄) */
+  /** 곧 나올 짧은 줄 (지금 줄 바로 뒤의 짧은 대사. 송출 칸에서 따로 송출) */
   followerIds: number[]
-  /** 마지막으로 송출한 대본 큐 (함께 띄운 짧은 대사와 지나간 줄 포함) */
+  /** 이번 회차에 송출한 대본 큐 */
   sentIds: number[]
   /** 위치 맞추기: 이 큐로 AI 추정 위치를 옮긴다 */
   onJump: (cueId: number) => void
@@ -136,7 +136,7 @@ export function ScriptList({ cues, currentId, confidence, threshold, returnId, p
               <span className="cue-tags">
                 {isReturn && <span className="cue-tag tag-return">복귀</span>}
                 {isSent && <span className="cue-tag tag-sent">송출됨</span>}
-                {isFollower && <span className="cue-tag">함께 표시</span>}
+                {isFollower && <span className="cue-tag">곧 나옴</span>}
                 {isCurrent && confidence !== null && (
                   <span className="cue-tag">
                     {uncertain ? '불확실' : 'AI 추정 위치'} · 신뢰도 {confidence.toFixed(2)}

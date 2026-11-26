@@ -360,7 +360,7 @@ wss.on('connection', (ws) => {
         break
       case 'cue.send':
         // 실제로는 송출 프로그램으로 가야 함 (아직 연동 없음). 모의 서버는 기록만
-        console.log(`[mock] 대본 큐 송출: #${msg.cue_id}${msg.grouped_ids.length ? ' + ' + msg.grouped_ids.map((id) => '#' + id).join(' ') : ''}`)
+        console.log(`[mock] 대본 큐 송출: #${msg.cue_id}`)
         break
       case 'subtitle.send':
         // 실제로는 송출 프로그램으로 가야 함 (아직 연동 없음). 모의 서버는 기록만

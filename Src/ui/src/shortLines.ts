@@ -1,4 +1,5 @@
-// 짧은 대사 묶어 보이기: 지금 줄 바로 뒤에 이어지는 짧은 대사들 (음향 · 암전 · 안내 줄은 건너뛰고 본다).
+// 곧 나올 짧은 줄: 지금 줄 바로 뒤에 이어지는 짧은 대사들 (음향 · 암전 · 안내 줄은 건너뛰고 본다).
+// 송출 칸에 미리 보여 주고 오퍼레이터가 줄마다 따로 송출한다.
 
 import type { Cue } from './cues'
 import { SHORT_LINE_MAX_GROUPED, SHORT_LINE_SYLLABLES } from './settings'

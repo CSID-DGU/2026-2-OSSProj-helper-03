@@ -80,14 +80,12 @@ export interface PositionSet {
 
 /**
  * (추가) 대본 큐 송출. AI가 추천한 큐를 오퍼레이터가 확인하고 직접 내보낸다 (자동 송출 없음, 마지막 판단은 사람).
- * grouped_ids: 함께 띄우는 짧은 대사(짧은 대사 묶어 보이기). passed_ids: 지금 줄 앞에 함께 띄우는 지나간 줄.
- * 실서버는 받아서 회차 기록 · 로그에만 남긴다. 실제 관객 송출은 2단계 송출 프로그램 연동 후.
+ * 오롯플래닛 관객 화면은 신호 하나에 한 줄만 띄워서 한 번에 한 줄씩 보낸다. 실서버는 index 신호(암전 줄은 blackout)로
+ * 바꿔 송출 채널로 보낸다 (engine/output.py).
  */
 export interface CueSend {
   type: 'cue.send'
   cue_id: number
-  grouped_ids: number[]
-  passed_ids?: number[]
 }
 
 export type ClientMessage =
@@ -116,7 +114,8 @@ export interface PositionUpdate {
   transcript?: string
   /**
    * (추가) 지나간 줄 함께 띄우기: 이번 이동으로 화면에 한 번도 안 뜨고 지나간 줄 중 엔진이 말한 것으로 본 줄 (있을 때만).
-   * 빠른 주고받기에서 한 조각에 다음 줄까지 들어가면 바로 뒤 줄로 가서 그 사이 줄이 안 뜬다. 화면은 지금 줄 앞에 함께 띄운다.
+   * 빠른 주고받기에서 한 조각에 다음 줄까지 들어가면 바로 뒤 줄로 가서 그 사이 줄이 안 뜬다. 화면은 송출 칸에 참고로만 보여 준다
+   * (관객 화면에는 보내지 않음).
    */
   passed_ids?: number[]
 }

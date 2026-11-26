@@ -59,7 +59,7 @@ def test_unseen_counts_cues_jumped_over(sample_cues):
 
 
 def test_screen_unseen_counts_grouped_and_passed_lines(sample_cues):
-    """휴대폰 자막 기준: 지나간 줄 함께 띄우기로 뜬 줄은 본 것으로 센다. 그 무렵 말하지 않은 줄을 띄우면 잘못 띄움."""
+    """송출 칸 기준: 지나간 줄로 보인 줄은 본 것으로 센다. 그 무렵 말하지 않은 줄이 보이면 잘못 띄움."""
     lines = [c for c in sample_cues if c.type in ("dialogue", "lyric")][:4]
     labels = [(i * 3.0, c.id) for i, c in enumerate(lines)]
     timeline = [(4.0, lines[1].id), (10.0, lines[3].id)]           # lines[2] 는 화면에 안 뜸
@@ -80,7 +80,7 @@ def test_unsure_flag_accuracy(sample_cues):
 
 
 def test_short_followers_match_the_screen():
-    """짧은 대사 묶어 보이기 (ui/src/shortLines.ts 와 같음): 음향 줄은 건너뛰고, 5음절 이하 대사를 2줄까지."""
+    """곧 나올 짧은 줄 (ui/src/shortLines.ts 와 같음): 음향 줄은 건너뛰고, 5음절 이하 대사를 2줄까지."""
     from engine.cue_loader import parse_cues
     from eval.metrics import short_followers
 

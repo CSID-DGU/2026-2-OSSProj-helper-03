@@ -15,6 +15,7 @@ Src/
 │   ├── aligner          ④ 대본 위치 추적
 │   ├── deviation        ⑤ 대본 이탈 감지 (1차)
 │   ├── protocol         엔진 → 화면 메시지 (ui/src/protocol.ts 와 같은 필드)
+│   ├── output           ⑧ 송출 연동: 오퍼레이터 송출 → 오롯플래닛 관객 화면 신호
 │   └── pipeline         ②~⑤ 연결 (재생 · 인식 · 상태 스레드)
 ├── server/          로컬 서버 (FastAPI, WebSocket ws://localhost:8000/ws). 인터넷에 올리는 방법은 DEPLOY.md
 ├── ui/              보조 화면 (React, Vite, TypeScript)
@@ -23,7 +24,7 @@ Src/
 └── tests/           테스트 (pytest)
 ```
 
-⑦ 회차 로그, 준비·설정 화면은 아직 없습니다. 2단계 ⑧ 송출 큐 연동과 3단계 ⑨ 자동 전진 제어는 송출 프로그램 연동 방식을 확인한 뒤 추가합니다.
+준비·설정 화면은 아직 없습니다. ⑧ 송출 연동은 신호를 만드는 데까지 했고(`engine/output.py`), 실제 채널은 오롯플래닛과 전달 방식을 정한 뒤 붙입니다 (#46). 3단계 ⑨ 자동 전진 제어는 그 뒤에 정합니다.
 
 ## 개발 환경
 
@@ -58,6 +59,7 @@ uvicorn server.main:app --port 8000
 | `HELPER_ALIGN` | 위치 추적기 설정 덮어쓰기 (보통은 비워 둠). 쉼표로 여러 개, 예: `ahead=10,lost_window=20`. 이름은 `engine/aligner.py`의 `Aligner` 참고, 틀린 이름이면 회차가 시작되지 않고 서버 로그에 "회차 시작 실패" |
 | `DEVIATE_AFTER_SEC` | 말소리가 이 시간 동안 대본과 안 맞으면 이탈 알림 |
 | `HELPER_INPUTS` / `HELPER_ACCESS_CODE` / `HELPER_MAX_SESSION_SEC` / `HELPER_MAX_SESSIONS` | 인터넷 서버용. 받을 소리 입력, 접속 코드, 회차 1번 최대 시간(초), 동시에 열 수 있는 회차 수. 비우면 제한 없음 ([DEPLOY.md](DEPLOY.md)) |
+| `HELPER_OUTPUT` | 송출 신호 채널 (`engine/output.py`). 비우면 `log`: 서버 로그와 회차 기록(`signal`)에만 남김. `off`면 신호를 안 만듦. 실제 오롯플래닛 채널은 전달 방식이 정해지면 추가 |
 | `HELPER_LOG_DIR` | 회차 기록 폴더. 비우면 `Src/logs`, `off`면 안 남김. 회차마다 `날짜_시각_공연ID.jsonl` 한 파일에 인식 글자 · 추적 위치 · 이탈 알림이 쌓인다 (형식은 `engine/session_log.py`). `eval/run_eval.py --results`에 그대로 넣어 다시 돌려 볼 수 있다 |
 
 키(Google 서비스 계정 JSON, CLOVA Secret Key)와 공연 데이터는 저장소에 넣지 않습니다. `.env`, `keys/`, `*.wav`는 `.gitignore`에 들어 있습니다.
@@ -86,7 +88,7 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 | 항목 | 지금 엔진이 하는 방식 (임시) | 정할 것 |
 |---|---|---|
 | 큐 CSV 열 | 화면 형식과 1차 데이터 형식(`cue_id, act, scene, type, speaker, text_ko`) 둘 다 읽음 | 열 이름 하나로 통일 |
-| 오롯플래닛 자막 파일 (#46) | 내용이 `{`로 시작하면 자막 파일(JSON)로 읽음. `idx`를 큐 번호로(송출 신호 `index`의 `subtitle_idx`와 같은 번호), `kor` 문장을 추적 대사로, 순서는 파일 순서. `kor` 문장이 빈 줄은 안내로 두어 추적하지 않음. 파일에 유형과 화자가 없어 대사로 보고, 줄에 `type`, `speaker` 칸이 있으면 그 값을 씀 (`engine/cue_loader.py` `parse_subtitle_json`) | 유형(대사, 가사)을 어디서 받을지 |
+| 오롯플래닛 자막 파일 (#46) | 내용이 `{`로 시작하면 자막 파일(JSON)로 읽음. `idx`를 큐 번호로(송출 신호 `index`의 `subtitle_idx`와 같은 번호), `kor` 문장을 추적 대사로, 순서는 파일 순서. `kor` 문장이 빈 줄은 안내로 두어 추적하지 않음. 파일에 유형과 화자가 없어 대사로 보고, 우리가 줄에 `type`, `speaker` 칸을 더하면 그 값을 씀 (가사 줄에 `type`을 적어야 노래 구간에서 이탈 알림을 끔. `engine/cue_loader.py` `parse_subtitle_json`) | — |
 | 큐 파일 전달 | 화면이 큐 파일 내용(`cue_csv`, CSV 또는 자막 JSON)을 함께 보내면 그것을 읽음. 없거나 녹음 재생 회차면 파일 **이름**을 `HELPER_DATA_DIR`에서 찾음 (녹음 재생은 큐 파일 옆 녹음을 틀어야 해서) | — |
 | 이탈 유형 | 대본에 없는 말이 `DEVIATE_AFTER_SEC` 이어지면 시작 알림을 `adlib`으로 보내고, 복귀 알림에 진짜 유형(skip/repeat/adlib). 누락(안 들린 대사 2\~6줄을 건너뜀) · 반복(들었던 앞 대사로 되돌아감)은 기다리지 않고 복귀 큐를 채운 알림 하나로 보냄. 감지 상태(정상 · 의심 · 재탐색 · 이탈 · 노래 · 입력 없음)는 엔진 로그에만 남김 | 화면에 '미정' 유형 추가 (`engine/deviation.py`의 `START_TYPE`만 바꾸면 됨), 감지 상태를 화면에 보낼지 |
 | 노래 구간 | 현재 위치 큐가 가사면 `segment: "song"`, 노래 구간에서는 이탈 알림을 보내지 않음 | 오퍼레이터가 노래 구간을 지정하는 메시지 |
@@ -97,9 +99,9 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 | 오류 알림 | 회차를 못 열면(키 없음 · 큐/녹음 파일 없음 · 마이크 오류) `engine.error {message, during: "session.start"}`, 음성인식이 3번 연달아 실패하거나 스트리밍이 끊기면 `during: "recognize"`, 인터넷 서버의 1회 사용 시간이 다 되면 `during: "limit"`로 화면에 알림 (서버 로그에도 남김) | — |
 | 소리 입력 선택 | `session.start`의 `input`(file / mic / text / browser)을 읽음. 없으면 `.env`의 `HELPER_INPUT` | — |
 | 브라우저 소리 | `input: "browser"` 회차에서 화면이 보내는 바이너리 메시지를 16kHz 모노 PCM16 소리로 받아 마이크처럼 추적함. 화면은 테스터의 마이크나 고른 녹음 파일을 0.1초 조각으로 보냄 (`ui/src/browserAudio.ts`). 서버는 소리를 저장하지 않음 | — |
-| 대본 큐 송출 | `cue.send {cue_id, grouped_ids, passed_ids}`를 받아 서버 로그와 회차 기록에만 남김 | 송출 프로그램 연동(2단계) |
+| 대본 큐 송출 | `cue.send {cue_id}`를 받아 오롯플래닛 신호 `index {subtitle_idx: cue_id}`로 바꿔 `HELPER_OUTPUT` 채널로 보냄. 유형이 암전인 큐는 `blackout`(화면 끄기). 관객 화면은 신호 하나에 한 줄만 띄워서 송출 한 번에 한 줄 | 실제 채널(전달 방식, 인증) (#46) |
 | 대사 입력 테스트 | `input: "text"` 회차에서 `test.say {text}`를 음성인식 결과 한 번으로 보고 실제 추적기 · 이탈 감지로 따라감 (음성인식 엔진 · 키 · 녹음 불필요). 같은 대사를 다시 쳐서 반복도 시험할 수 있게 걸러내기는 하지 않음. 애드리브 알림은 대본에 없는 말을 두 번, `DEVIATE_AFTER_SEC` 넘게 걸쳐 쳐야 뜸 | — |
-| 애드리브 임시 자막 | `subtitle.send {text, source}`를 받아 서버 로그와 회차 기록(`subtitle`)에만 남김 | 수행계획서에서 이번 학기 범위 밖(Won't) · 송출 프로그램 연동(2단계)이라 팀 합의 필요 |
+| 애드리브 임시 자막 | `subtitle.send {text, source}`를 받아 오롯플래닛 신호 `emergence {rendered_text: text}`(긴급 문구)로 보냄. 대본에 없는 글자를 띄울 신호가 이것뿐. 회차 기록(`subtitle`)에도 남김 | — |
 
 ## 성능 측정 (eval)
 
