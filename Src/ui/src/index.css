@@ -1,9 +1,10 @@
 :root {
-  --bg: #1e2027;
-  --panel: #2a2d36;
-  --text: #e8e9ee;
-  --muted: #9a9db0;
-  --accent: #6b5fd3;
+  /* 어두운 공연장에서 눈부시지 않게 바탕은 더 어둡게, 글자는 순백보다 낮게 */
+  --bg: #16171c;
+  --panel: #20222a;
+  --text: #d8dae2;
+  --muted: #8b8ea0;
+  --accent: #5f54c4;
   --ok: #3fbf8a;
   --warn: #e0a43a;
   --danger: #e0605a;

@@ -1,5 +1,5 @@
 // ② 보조 화면 (공연 중, 보기 전용). 기준: 수행계획서 그림 4 보조 화면 와이어프레임.
-// 대본 큐 송출 기능은 두지 않는다 (요구사항 R3). 애드리브 임시 자막만 오퍼레이터가 확인해서 송출한다 (팀 합의 필요).
+// 송출은 AI가 추천한 큐 · 애드리브 임시 자막을 오퍼레이터가 확인하고 직접 한다 (자동 송출 없음, 요구사항 R3).
 // 위치 맞추기(대본 줄 클릭 · 이전/다음)는 송출이 아니라 엔진의 AI 추정 위치만 고친다.
 
 import { useMemo, useState } from 'react'
@@ -8,11 +8,13 @@ import { INPUT_LABEL, type InputChoice } from '../inputs'
 import type { SubtitleSource } from '../protocol'
 import { PASSED_MAX_SHOWN, RETURN_HIGHLIGHT_MS, STALE_MS } from '../settings'
 import type { EngineState } from '../useEngine'
+import { useBrightness } from '../useBrightness'
 import { useNow } from '../useNow'
 import { shortFollowers } from '../shortLines'
 import { formatElapsed } from '../time'
 import { AdlibPanel, type SentSubtitle } from './AdlibPanel'
 import { AudioPlayer } from './AudioPlayer'
+import { BrightnessButton, DimLayer } from './Brightness'
 import { DeviationCard, type HoldReason } from './DeviationCard'
 import { DeviationTimeline } from './DeviationTimeline'
 import { EdgeFlash } from './EdgeFlash'
@@ -51,9 +53,12 @@ interface Props {
 export function AssistScreen(props: Props) {
   const { showName, cues, input: inputMode, startedAt, engine, threshold, onEnd, onSay, onSendSubtitle, onJump, onSendCue } = props
   const now = useNow()
+  const brightness = useBrightness()
   const [sent, setSent] = useState<SentSubtitle[]>([])
   /** 마지막으로 송출한 대본 큐 */
   const [sentCue, setSentCue] = useState<{ id: number; grouped: number[]; passed: number[]; at: number } | null>(null)
+  /** 이번 회차에 송출한 대본 큐 전부 (함께 띄운 줄 포함) */
+  const [sentIds, setSentIds] = useState<number[]>([])
   /** 닫은 엔진 오류 (받은 시각). 같은 오류는 다시 띄우지 않는다 */
   const [dismissedErrorAt, setDismissedErrorAt] = useState<number | null>(null)
   const cueById = useMemo(() => new Map(cues.map((c) => [c.id, c])), [cues])
@@ -86,7 +91,6 @@ export function AssistScreen(props: Props) {
   // 송출 칸: AI 추천 큐 (복귀 직후면 복귀 큐). 송출은 오퍼레이터가 확인하고 누른다
   const suggestId = returnId ?? position?.cue_id ?? null
   const suggestFollowers = useMemo(() => shortFollowers(cues, suggestId), [cues, suggestId])
-  const sentIds = useMemo(() => (sentCue ? [sentCue.id, ...sentCue.grouped, ...sentCue.passed] : []), [sentCue])
   // 지나간 줄 함께 띄우기: AI 추정이 지금 줄로 오면서 화면에 안 띄운 줄 (엔진이 말한 것으로 본 줄). 지금 줄 앞에 함께 띄운다.
   // 복귀 큐를 추천할 때는 쓰지 않고, 이미 송출한 줄은 뺀다
   const suggestPassed = useMemo(
@@ -104,6 +108,23 @@ export function AssistScreen(props: Props) {
     const passed = cue.id === suggestId ? suggestPassed.map((p) => p.id) : []
     onSendCue(cue.id, grouped, passed)
     setSentCue({ id: cue.id, grouped, passed, at: Date.now() })
+    setSentIds((ids) => [...ids, cue.id, ...grouped, ...passed])
+  }
+
+  // 다음 상황 자막: 추천 큐 바로 뒤의 상황 설명 줄(음향 · 암전 · 안내) 중 아직 송출하지 않은 첫 줄. 다음 대사 · 가사가 나오면 멈춘다
+  const nextDesc = useMemo(() => {
+    const at = cues.findIndex((c) => c.id === suggestId)
+    if (at < 0) return undefined
+    for (const cue of cues.slice(at + 1)) {
+      if (cue.type === 'dialogue' || cue.type === 'lyric') return undefined
+      if (!sentIds.includes(cue.id)) return cue
+    }
+    return undefined
+  }, [cues, suggestId, sentIds])
+  const sendDesc = (cue: Cue) => {
+    onSendCue(cue.id, [], [])
+    setSentCue({ id: cue.id, grouped: [], passed: [], at: Date.now() })
+    setSentIds((ids) => [...ids, cue.id])
   }
 
   // 휴대폰 미리보기: 가장 마지막에 송출한 것 (대본 큐 또는 애드리브 임시 자막)
@@ -113,6 +134,7 @@ export function AssistScreen(props: Props) {
   return (
     <div className="assist">
       <EdgeFlash deviation={deviation} />
+      <DimLayer level={brightness.level} />
       <header className="assist-head">
         <div className="title">
           <h1 className="show-name">{showName}</h1>
@@ -126,6 +148,7 @@ export function AssistScreen(props: Props) {
           <InputBadge hold={hold} level={input?.audio_level ?? null} />
           <span className={`badge ${song ? 'badge-song' : ''}`}>{song ? '노래 구간' : '대사 구간'}</span>
           {position && <span className="latency">지연 {(position.latency_ms / 1000).toFixed(1)}초</span>}
+          <BrightnessButton level={brightness.level} onNext={brightness.next} />
           <button className="ghost small" onClick={onEnd}>
             회차 종료
           </button>
@@ -168,9 +191,11 @@ export function AssistScreen(props: Props) {
             cue={suggestId !== null ? cueById.get(suggestId) : undefined}
             followers={suggestFollowers}
             passed={suggestPassed}
-            sentId={sentCue?.id ?? null}
+            desc={nextDesc}
+            sentIds={sentIds}
             deviating={deviating}
             onSend={sendCue}
+            onSendDesc={sendDesc}
           />
           <AdlibPanel
             deviationSince={deviating && deviation ? deviation.since : null}

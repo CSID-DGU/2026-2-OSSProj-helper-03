@@ -31,3 +31,9 @@ export const SHORT_LINE_MAX_GROUPED = 2
  * 그 대신 말하기 전에 띄운 줄이 2건 (eval/suite.py 의 '화면 안 보임', '잘못 띄움').
  */
 export const PASSED_MAX_SHOWN = 2
+
+/**
+ * 화면 밝기 단계 (어두운 공연장용). 상단 '밝기' 버튼을 누를 때마다 다음 단계로 바뀌고, 브라우저에 기억한다.
+ * 화면 전체 위에 검은 막을 (1 - 값)만큼 덮어서 어둡게 한다.
+ */
+export const BRIGHTNESS_LEVELS = [1, 0.75, 0.5] as const
