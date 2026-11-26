@@ -1,12 +1,15 @@
 """① 큐 시트 로더 + 정규화.
 
-두 가지 CSV 열 구성을 모두 받는다 (열 이름이 팀에서 확정될 때까지).
+두 가지 CSV 열 구성과 오롯플래닛 자막 파일(JSON)을 받는다.
 - 화면(ui/src/cues.ts) 형식: id, order, type, speaker, text
 - 1차 데이터 형식:          cue_id, act, scene, type, speaker, text_ko
+- 자막 파일(JSON):           {"language": [...], "contents": [{"idx": 1, "subtitles": [{"lang": "kor", "text": ...}]}]}
+                             (parse_subtitle_json 참고. 내용이 "{" 로 시작하면 자막 파일로 본다)
 유형은 dialogue/lyric/sound/blackout/notice 또는 대사/가사/음향/암전/안내.
 """
 import csv
 import io
+import json
 import re
 from dataclasses import dataclass
 
@@ -51,7 +54,9 @@ def to_jamo(text: str) -> str:
 
 
 def parse_cues(source: str) -> list[Cue]:
-    """CSV 문자열 → Cue 목록 (order 순). 형식이 틀리면 ValueError (줄 번호 포함)."""
+    """CSV 또는 자막 파일(JSON) 문자열 → Cue 목록 (order 순). 형식이 틀리면 ValueError (줄 번호 포함)."""
+    if source.lstrip("﻿ \t\r\n").startswith("{"):
+        return parse_subtitle_json(source)
     rows = list(csv.DictReader(io.StringIO(source.lstrip("﻿"))))
     if not rows:
         raise ValueError("빈 파일입니다.")
@@ -79,6 +84,46 @@ def parse_cues(source: str) -> list[Cue]:
         cues.append(Cue(cid, order, ctype, (r.get("speaker") or "").strip(), text, to_jamo(text),
                         f"{act}-{scene}" if act or scene else ""))
     return sorted(cues, key=lambda c: c.order)
+
+
+def parse_subtitle_json(source: str, lang: str = "kor") -> list[Cue]:
+    """오롯플래닛 자막 파일(JSON) → Cue 목록 (#46).
+
+    - idx 를 큐 번호로 쓴다. 송출 신호 index 의 subtitle_idx 와 같은 번호라 번호 연결표가 필요 없다
+    - 순서는 파일에 적힌 순서. idx 가 겹치면 송출 번호가 헷갈려서 오류
+    - 추적 대사는 lang(기본 kor) 문장. 그 언어 문장이 비어 있는 줄은 안내(notice)로 두어 추적하지 않는다
+    - 자막 파일에는 유형과 화자가 없어서 대사(dialogue)로 본다. 줄에 type, speaker 칸이 있으면 그 값을 쓴다
+      (유형을 어디서 받을지는 #46 에서 정하는 중)
+    - 다른 언어 문장과 advertisements 는 위치 추적에 쓰지 않아 읽지 않는다
+    """
+    try:
+        data = json.loads(source.lstrip("﻿"))
+    except json.JSONDecodeError as e:
+        raise ValueError(f"자막 파일(JSON)을 읽을 수 없습니다: {e.lineno}번째 줄 {e.msg}") from None
+    contents = data.get("contents") if isinstance(data, dict) else None
+    if not isinstance(contents, list) or not contents:
+        raise ValueError('자막 파일에 "contents" 목록이 없습니다.')
+
+    cues, seen = [], set()
+    for i, item in enumerate(contents):
+        n = i + 1
+        idx = item.get("idx") if isinstance(item, dict) else None
+        if isinstance(idx, bool) or not isinstance(idx, int):
+            raise ValueError(f"{n}번째 자막: idx가 숫자가 아닙니다.")
+        if idx in seen:
+            raise ValueError(f"{n}번째 자막: 앞에서 이미 나온 idx({idx})입니다.")
+        seen.add(idx)
+        subs = item.get("subtitles") or []
+        text = next((str(s.get("text") or "").strip() for s in subs
+                     if isinstance(s, dict) and s.get("lang") == lang), "")
+        raw_type = str(item.get("type") or "").strip()
+        ctype = TYPE_ALIASES.get(raw_type) if raw_type else ("dialogue" if text else "notice")
+        if ctype is None:
+            raise ValueError(f'{n}번째 자막 (idx {idx}): 알 수 없는 유형 "{raw_type}"')
+        cues.append(Cue(idx, n, ctype, str(item.get("speaker") or "").strip(), text, to_jamo(text)))
+    if not any(c.text for c in cues):
+        raise ValueError(f"자막 파일에 {lang} 문장이 없습니다 (위치 추적에 쓰는 언어).")
+    return cues
 
 
 def load_cues(path) -> list[Cue]:

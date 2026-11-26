@@ -5,7 +5,7 @@
 화면 → 엔진
 - session.start {show_id, cue_file, cue_csv?, input?} : 큐를 읽고 시작.
       input = file(녹음 파일 재생) / mic(마이크) / text(대사 입력 테스트) / browser(브라우저가 보낸 소리).
-      없으면 .env 의 HELPER_INPUT. 큐는 cue_csv(화면이 보낸 큐 파일 내용)가 있으면 그것을, 없으면
+      없으면 .env 의 HELPER_INPUT. 큐는 cue_csv(화면이 보낸 큐 파일 내용, CSV 또는 자막 JSON)가 있으면 그것을, 없으면
       cue_file 이름을 HELPER_DATA_DIR 에서 찾는다 (녹음 재생은 큐 파일 옆 녹음을 틀어야 해서 항상 폴더에서)
 - (바이너리)                         : browser 회차에서 브라우저가 보낸 소리 (16kHz 모노 PCM16 조각)
 - session.end   {show_id}           : 멈춤
