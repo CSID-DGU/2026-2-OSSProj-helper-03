@@ -93,7 +93,7 @@ def parse_subtitle_json(source: str, lang: str = "kor") -> list[Cue]:
     - 순서는 파일에 적힌 순서. idx 가 겹치면 송출 번호가 헷갈려서 오류
     - 추적 대사는 lang(기본 kor) 문장. 그 언어 문장이 비어 있는 줄은 안내(notice)로 두어 추적하지 않는다
     - 자막 파일에는 유형과 화자가 없어서 대사(dialogue)로 본다. 줄에 type, speaker 칸이 있으면 그 값을 쓴다
-      (유형을 어디서 받을지는 #46 에서 정하는 중)
+      (우리가 더해 쓰는 칸. 가사 줄에 type 을 적어 두면 노래 구간에서 이탈 알림을 끈다)
     - 다른 언어 문장과 advertisements 는 위치 추적에 쓰지 않아 읽지 않는다
     """
     try:

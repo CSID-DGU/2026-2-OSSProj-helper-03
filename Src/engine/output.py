@@ -1,7 +1,7 @@
 """⑧ 송출 연동 (#46). 오퍼레이터가 누른 송출을 오롯플래닛 관객 화면 신호로 바꿔 내보낸다.
 
 오롯플래닛 신호 (11/24 받은 양식). 회차마다 채널 하나로 4가지를 보내고, 데이터는 subtitle_idx, rendered_text 두 칸
-- index        : N번째 줄 표시. subtitle_idx = 자막 파일의 idx = 우리 큐 번호   ← 큐 송출 (cue.send)
+- index        : N번째 줄 표시. subtitle_idx = 자막 파일의 idx = 우리 큐 번호   ← 큐 송출 (cue.send, 한 번에 한 줄)
 - emergence    : 긴급 문구 표시. rendered_text 에 글자                        ← 애드리브 임시 자막 (subtitle.send)
 - advertisement: 광고 표시. rendered_text 에 이미지 주소                       ← 아직 화면에 버튼 없음
 - blackout     : 화면 끄기(암전)                                              ← 유형이 암전인 큐를 송출할 때
@@ -12,10 +12,10 @@
 - off       : 신호를 만들지 않는다
 실제 채널은 전달 방식이 정해지면 send(signal) 이 있는 클래스를 하나 더 만들어 CHANNELS 에 넣는다.
 
-정하는 중 (#46)
-- 함께 띄운 짧은 줄(grouped_ids)과 지나간 줄(passed_ids): 관객 화면은 index 하나에 한 줄만 띄워서,
-  지금은 오퍼레이터가 누른 큐(cue_id) 번호만 보낸다
-- 암전 줄: 지금은 blackout 신호로 보낸다. 오롯플래닛 자막 파일에 암전 줄이 따로 있으면 index 로 보내야 할 수 있음
+양식에 맞춰 정한 것 (#46)
+- 관객 화면은 index 하나에 한 줄만 띄워서 송출 버튼 한 번에 한 줄만 보낸다. 짧은 대사는 화면이 '곧 나올 짧은 줄'로
+  미리 보여 주고 오퍼레이터가 줄마다 누른다. 지나간 줄은 이미 말한 줄이라 보내지 않는다
+- 암전 줄은 blackout(화면 끄기), 대본에 없는 애드리브 자막은 emergence(긴급 문구)
 """
 import json
 import logging

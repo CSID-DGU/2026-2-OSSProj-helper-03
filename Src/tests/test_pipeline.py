@@ -228,7 +228,7 @@ def test_typed_input_follows_script_and_flags_adlib(sample_cues):
 
 
 def test_position_update_carries_passed_lines(sample_cues):
-    """줄을 건너뛰고 앞으로 가면 위치 갱신에 그 사이 들은 줄(passed_ids)이 붙는다 (화면이 지금 줄 앞에 함께 띄움)."""
+    """줄을 건너뛰고 앞으로 가면 위치 갱신에 그 사이 들은 줄(passed_ids)이 붙는다 (화면이 송출 칸에 지나간 줄로 보여 줌)."""
     from engine.audio_input import TextSource
     from engine.pipeline import TypedInput
 

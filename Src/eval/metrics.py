@@ -8,8 +8,9 @@
   (정답 시각에 음향 · 암전 큐가 진행 중이면 그 직전 추적 큐를 정답으로 본다)
 - 도달 지연: 배우가 큐를 시작한 시각 → 화면이 그 큐(또는 그 뒤)를 처음 보여 준 시각
 - 뒤로 감 · 큰 점프(3큐 이상): 화면이 흔들리는 정도
-- 화면 안 보임: 휴대폰 자막에 한 번도 못 뜬 대사. 지금 줄에 더해 화면의 짧은 대사 묶어 보이기(지금 줄 바로 뒤 5음절 이하
-  대사)와 지나간 줄 함께 띄우기(추적기가 지나친 줄 중 누락 근거가 없는 줄)로 뜨는 줄도 본 것으로 센다
+- 화면 안 보임: 보조 화면 송출 칸에 한 번도 안 보인 대사 (오퍼레이터가 송출할 기회가 없던 줄). 추천 큐에 더해
+  곧 나올 짧은 줄(지금 줄 바로 뒤 5음절 이하 대사)과 지나간 줄(추적기가 지나친 줄 중 누락 근거가 없는 줄)로 보인 줄도
+  본 것으로 센다
 """
 import json
 import re
@@ -18,7 +19,7 @@ from dataclasses import dataclass, field
 
 from engine.cue_loader import TRACK_TYPES, Cue
 
-# 화면 기준값 (ui/src/settings.ts 와 같게): 짧은 대사 묶어 보이기 음절과 줄 수, 지나간 줄 함께 띄우기 줄 수
+# 화면 기준값 (ui/src/settings.ts 와 같게): 곧 나올 짧은 줄 음절과 줄 수, 지나간 줄 줄 수
 SHORT_LINE_SYLLABLES, SHORT_LINE_MAX_GROUPED, PASSED_MAX_SHOWN = 5, 2, 2
 SAID_WINDOW = 15.0   # 지나간 줄로 띄운 때부터 이만큼(초) 앞까지 그 줄을 말했으면 맞게 띄운 것
 UNSURE_BELOW = 0.6  # 신뢰도가 이 아래면 화면이 '불확실' (ui/src/settings.ts DEFAULT_ALERT_THRESHOLD)
@@ -84,7 +85,7 @@ class Report:
     reach: dict[int, float] = field(default_factory=dict)
     exact: float = 0.0              # 화면 큐가 정답 큐와 정확히 같은 비율
     unseen: int = 0                 # 화면에 한 번도 안 보인 큐 (뒤 큐로 건너뛰어 지나감. missed 는 뒤 큐에 닿으면 지난 것으로 셈)
-    screen_unseen: int = 0          # 휴대폰 자막에 한 번도 못 뜬 대사 (짧은 대사 묶어 보이기와 지나간 줄 함께 띄우기까지 넣고 셈)
+    screen_unseen: int = 0          # 송출 칸에 한 번도 안 보인 대사 (곧 나올 짧은 줄과 지나간 줄까지 넣고 셈)
     wrong_passed: int = 0           # 지나간 줄로 띄웠는데 그 무렵(SAID_WINDOW 초 안) 말하지 않은 줄
     unsure: float = 0.0             # 화면이 '불확실'을 띄운 시간 비율 (conf 를 줬을 때)
     unsure_acc: float | None = None   # '불확실'일 때 ±1큐 정확도
@@ -96,7 +97,7 @@ def evaluate(timeline: list[tuple[float, int]], labels: list[tuple[float, int]],
              passed: list[tuple[float, list[int]]] | None = None,
              conf: list[tuple[float, float]] | None = None) -> Report:
     """only = 이 큐들을 말하는 동안만 센다 (예: 숫자가 든 대사만). 뒤로 간 횟수 · 큰 점프는 전체로 센다.
-    passed = 지나간 줄 함께 띄우기로 화면에 간 줄 [(시각초, [큐번호])] (eval/run_eval.replay 의 passed).
+    passed = 지나간 줄로 송출 칸에 보인 줄 [(시각초, [큐번호])] (eval/run_eval.replay 의 passed).
     conf = 위치 갱신마다 보낸 신뢰도 [(시각초, 신뢰도)] (replay 의 conf). 주면 '불확실' 표시가 틀린 화면을 가려내는지 잰다."""
     items = [c for c in cues if c.type in TRACK_TYPES and c.jamo]
     idx = {c.id: i for i, c in enumerate(items)}

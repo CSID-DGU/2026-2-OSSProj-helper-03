@@ -88,7 +88,7 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 | 항목 | 지금 엔진이 하는 방식 (임시) | 정할 것 |
 |---|---|---|
 | 큐 CSV 열 | 화면 형식과 1차 데이터 형식(`cue_id, act, scene, type, speaker, text_ko`) 둘 다 읽음 | 열 이름 하나로 통일 |
-| 오롯플래닛 자막 파일 (#46) | 내용이 `{`로 시작하면 자막 파일(JSON)로 읽음. `idx`를 큐 번호로(송출 신호 `index`의 `subtitle_idx`와 같은 번호), `kor` 문장을 추적 대사로, 순서는 파일 순서. `kor` 문장이 빈 줄은 안내로 두어 추적하지 않음. 파일에 유형과 화자가 없어 대사로 보고, 줄에 `type`, `speaker` 칸이 있으면 그 값을 씀 (`engine/cue_loader.py` `parse_subtitle_json`) | 유형(대사, 가사)을 어디서 받을지 |
+| 오롯플래닛 자막 파일 (#46) | 내용이 `{`로 시작하면 자막 파일(JSON)로 읽음. `idx`를 큐 번호로(송출 신호 `index`의 `subtitle_idx`와 같은 번호), `kor` 문장을 추적 대사로, 순서는 파일 순서. `kor` 문장이 빈 줄은 안내로 두어 추적하지 않음. 파일에 유형과 화자가 없어 대사로 보고, 우리가 줄에 `type`, `speaker` 칸을 더하면 그 값을 씀 (가사 줄에 `type`을 적어야 노래 구간에서 이탈 알림을 끔. `engine/cue_loader.py` `parse_subtitle_json`) | — |
 | 큐 파일 전달 | 화면이 큐 파일 내용(`cue_csv`, CSV 또는 자막 JSON)을 함께 보내면 그것을 읽음. 없거나 녹음 재생 회차면 파일 **이름**을 `HELPER_DATA_DIR`에서 찾음 (녹음 재생은 큐 파일 옆 녹음을 틀어야 해서) | — |
 | 이탈 유형 | 대본에 없는 말이 `DEVIATE_AFTER_SEC` 이어지면 시작 알림을 `adlib`으로 보내고, 복귀 알림에 진짜 유형(skip/repeat/adlib). 누락(안 들린 대사 2\~6줄을 건너뜀) · 반복(들었던 앞 대사로 되돌아감)은 기다리지 않고 복귀 큐를 채운 알림 하나로 보냄. 감지 상태(정상 · 의심 · 재탐색 · 이탈 · 노래 · 입력 없음)는 엔진 로그에만 남김 | 화면에 '미정' 유형 추가 (`engine/deviation.py`의 `START_TYPE`만 바꾸면 됨), 감지 상태를 화면에 보낼지 |
 | 노래 구간 | 현재 위치 큐가 가사면 `segment: "song"`, 노래 구간에서는 이탈 알림을 보내지 않음 | 오퍼레이터가 노래 구간을 지정하는 메시지 |
@@ -99,9 +99,9 @@ python -m engine.audio_input --test 3    # 3초 받아서 음량 표시 (소리�
 | 오류 알림 | 회차를 못 열면(키 없음 · 큐/녹음 파일 없음 · 마이크 오류) `engine.error {message, during: "session.start"}`, 음성인식이 3번 연달아 실패하거나 스트리밍이 끊기면 `during: "recognize"`, 인터넷 서버의 1회 사용 시간이 다 되면 `during: "limit"`로 화면에 알림 (서버 로그에도 남김) | — |
 | 소리 입력 선택 | `session.start`의 `input`(file / mic / text / browser)을 읽음. 없으면 `.env`의 `HELPER_INPUT` | — |
 | 브라우저 소리 | `input: "browser"` 회차에서 화면이 보내는 바이너리 메시지를 16kHz 모노 PCM16 소리로 받아 마이크처럼 추적함. 화면은 테스터의 마이크나 고른 녹음 파일을 0.1초 조각으로 보냄 (`ui/src/browserAudio.ts`). 서버는 소리를 저장하지 않음 | — |
-| 대본 큐 송출 | `cue.send {cue_id, grouped_ids, passed_ids}`를 받아 오롯플래닛 신호 `index {subtitle_idx: cue_id}`로 바꿔 `HELPER_OUTPUT` 채널로 보냄. 유형이 암전인 큐는 `blackout`. 함께 띄운 줄과 지나간 줄은 기록만 함 (관객 화면은 신호 하나에 한 줄) | 실제 채널(전달 방식, 인증), 함께 띄운 줄과 지나간 줄을 보낼지, 암전 줄을 `index`로 보낼지 (#46) |
+| 대본 큐 송출 | `cue.send {cue_id}`를 받아 오롯플래닛 신호 `index {subtitle_idx: cue_id}`로 바꿔 `HELPER_OUTPUT` 채널로 보냄. 유형이 암전인 큐는 `blackout`(화면 끄기). 관객 화면은 신호 하나에 한 줄만 띄워서 송출 한 번에 한 줄 | 실제 채널(전달 방식, 인증) (#46) |
 | 대사 입력 테스트 | `input: "text"` 회차에서 `test.say {text}`를 음성인식 결과 한 번으로 보고 실제 추적기 · 이탈 감지로 따라감 (음성인식 엔진 · 키 · 녹음 불필요). 같은 대사를 다시 쳐서 반복도 시험할 수 있게 걸러내기는 하지 않음. 애드리브 알림은 대본에 없는 말을 두 번, `DEVIATE_AFTER_SEC` 넘게 걸쳐 쳐야 뜸 | — |
-| 애드리브 임시 자막 | `subtitle.send {text, source}`를 받아 오롯플래닛 신호 `emergence {rendered_text: text}`로 보냄. 회차 기록(`subtitle`)에도 남김 | 긴급 문구 칸에 애드리브 자막을 띄워도 되는지 (#46) |
+| 애드리브 임시 자막 | `subtitle.send {text, source}`를 받아 오롯플래닛 신호 `emergence {rendered_text: text}`(긴급 문구)로 보냄. 대본에 없는 글자를 띄울 신호가 이것뿐. 회차 기록(`subtitle`)에도 남김 | — |
 
 ## 성능 측정 (eval)
 

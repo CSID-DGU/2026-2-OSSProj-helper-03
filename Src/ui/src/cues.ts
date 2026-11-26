@@ -102,7 +102,7 @@ export function parseCueFile(source: string): Cue[] {
   return /^[﻿\s]*\{/.test(source) ? parseSubtitleJson(source) : parseCueCsv(source)
 }
 
-/** 자막 파일 한 줄 (오롯플래닛 형식). type, speaker는 우리가 더해 쓸 수 있는 칸 (#46에서 정하는 중) */
+/** 자막 파일 한 줄 (오롯플래닛 형식). type, speaker는 우리가 더해 쓰는 칸 (가사 줄에 type을 적으면 노래 구간에서 이탈 알림을 끔) */
 interface SubtitleLine {
   idx?: unknown
   subtitles?: { lang?: unknown; text?: unknown }[]

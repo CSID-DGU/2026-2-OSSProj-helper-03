@@ -59,7 +59,7 @@ def aligner_kwargs(args) -> dict:
 
 def replay(cues, records, kw, passed: list | None = None, conf: list | None = None) -> list[tuple[float, int]]:
     """인식 글자를 시간 순서대로 추적기에 넣어 타임라인을 만든다 (파이프라인과 같은 걸러내기).
-    passed 에 목록을 주면 지나간 줄 함께 띄우기로 화면에 갈 줄을 [(시각초, [큐번호])] 로,
+    passed 에 목록을 주면 지나간 줄로 송출 칸에 보일 줄을 [(시각초, [큐번호])] 로,
     conf 에 목록을 주면 위치 갱신마다 화면에 보낸 신뢰도를 [(시각초, 신뢰도)] 로 채운다."""
     al = Aligner(cues, **kw)
     timeline, prev_raw = [], ""

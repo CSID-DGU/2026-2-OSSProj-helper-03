@@ -34,8 +34,7 @@ def test_make_channel(monkeypatch):
 
 
 def test_operator_sends_become_signals(sample_cues, monkeypatch, tmp_path):
-    """대사 입력 회차에서 큐 송출 · 임시 자막 송출을 누르면 신호가 나가고 회차 기록에도 남는다.
-    함께 띄운 줄 · 지나간 줄은 정하는 중이라 누른 큐 번호만 보낸다."""
+    """대사 입력 회차에서 큐 송출 · 임시 자막 송출을 누르면 신호가 나가고 회차 기록에도 남는다."""
     channel = LogChannel()
     monkeypatch.setattr(srv, "make_channel", lambda: channel)
     monkeypatch.setenv("HELPER_LOG_DIR", str(tmp_path))
@@ -44,8 +43,8 @@ def test_operator_sends_become_signals(sample_cues, monkeypatch, tmp_path):
 
     with TestClient(srv.app) as client, client.websocket_connect("/ws") as ws:
         ws.send_json({"type": "session.start", "show_id": "송출", "cue_file": "sample_cues.csv", "input": "text"})
-        ws.send_json({"type": "cue.send", "cue_id": line.id, "grouped_ids": [line.id + 1], "passed_ids": []})
-        ws.send_json({"type": "cue.send", "cue_id": blackout.id, "grouped_ids": []})
+        ws.send_json({"type": "cue.send", "cue_id": line.id})
+        ws.send_json({"type": "cue.send", "cue_id": blackout.id})
         ws.send_json({"type": "subtitle.send", "text": "잠깐만요", "source": "manual"})
         ws.send_json({"type": "subtitle.send", "text": "  ", "source": "manual"})      # 빈 글자는 안 보냄
         ws.send_json({"type": "cue.send", "cue_id": "다음"})                           # 번호가 아니면 무시

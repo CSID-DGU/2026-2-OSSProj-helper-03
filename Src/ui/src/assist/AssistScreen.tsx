@@ -46,8 +46,8 @@ interface Props {
   onSendSubtitle: (text: string, source: SubtitleSource) => void
   /** 위치 맞추기: AI 추정 위치를 이 큐로 */
   onJump: (cueId: number) => void
-  /** 대본 큐 송출 (오퍼레이터가 확인하고 누름). passedIds = 지금 줄 앞에 함께 띄우는 지나간 줄 */
-  onSendCue: (cueId: number, groupedIds: number[], passedIds: number[]) => void
+  /** 대본 큐 송출 (오퍼레이터가 확인하고 누름). 관객 화면은 신호 하나에 한 줄이라 한 번에 한 줄 */
+  onSendCue: (cueId: number) => void
 }
 
 export function AssistScreen(props: Props) {
@@ -56,8 +56,8 @@ export function AssistScreen(props: Props) {
   const brightness = useBrightness()
   const [sent, setSent] = useState<SentSubtitle[]>([])
   /** 마지막으로 송출한 대본 큐 */
-  const [sentCue, setSentCue] = useState<{ id: number; grouped: number[]; passed: number[]; at: number } | null>(null)
-  /** 이번 회차에 송출한 대본 큐 전부 (함께 띄운 줄 포함) */
+  const [sentCue, setSentCue] = useState<{ id: number; at: number } | null>(null)
+  /** 이번 회차에 송출한 대본 큐 전부 */
   const [sentIds, setSentIds] = useState<number[]>([])
   /** 닫은 엔진 오류 (받은 시각). 같은 오류는 다시 띄우지 않는다 */
   const [dismissedErrorAt, setDismissedErrorAt] = useState<number | null>(null)
@@ -80,7 +80,7 @@ export function AssistScreen(props: Props) {
     setSent((list) => [...list, { at: Date.now(), text, source }])
   }
 
-  // 짧은 대사 묶어 보이기: 지금 줄 바로 뒤의 짧은 대사들
+  // 곧 나올 짧은 줄: 지금 줄 바로 뒤의 짧은 대사들 (대본 목록에 '곧 나옴' 표시)
   const followers = useMemo(() => shortFollowers(cues, position?.cue_id ?? null), [cues, position?.cue_id])
 
   const returnId =
@@ -90,9 +90,10 @@ export function AssistScreen(props: Props) {
 
   // 송출 칸: AI 추천 큐 (복귀 직후면 복귀 큐). 송출은 오퍼레이터가 확인하고 누른다
   const suggestId = returnId ?? position?.cue_id ?? null
+  // 곧 나올 짧은 줄: 1초도 안 되는 짧은 대사는 AI 추정이 건너뛰기 쉬워서 송출 칸에 미리 보여 주고 줄마다 따로 송출한다
   const suggestFollowers = useMemo(() => shortFollowers(cues, suggestId), [cues, suggestId])
-  // 지나간 줄 함께 띄우기: AI 추정이 지금 줄로 오면서 화면에 안 띄운 줄 (엔진이 말한 것으로 본 줄). 지금 줄 앞에 함께 띄운다.
-  // 복귀 큐를 추천할 때는 쓰지 않고, 이미 송출한 줄은 뺀다
+  // 지나간 줄: AI 추정이 지금 줄로 오면서 화면에 안 띄운 줄 (엔진이 말한 것으로 본 줄). 송출 칸에 참고로만 보여 준다
+  // (이미 말한 줄이라 관객 화면에는 보내지 않음). 복귀 큐를 추천할 때는 쓰지 않고, 이미 송출한 줄은 뺀다
   const suggestPassed = useMemo(
     () =>
       suggestId !== null && suggestId === position?.cue_id
@@ -103,12 +104,11 @@ export function AssistScreen(props: Props) {
         : [],
     [suggestId, position?.cue_id, passedIds, sentIds, cueById],
   )
+  // 송출: 추천 큐, 곧 나올 짧은 줄, 다음 상황 자막 모두 누른 줄 하나만 보낸다
   const sendCue = (cue: Cue) => {
-    const grouped = suggestFollowers.map((f) => f.id)
-    const passed = cue.id === suggestId ? suggestPassed.map((p) => p.id) : []
-    onSendCue(cue.id, grouped, passed)
-    setSentCue({ id: cue.id, grouped, passed, at: Date.now() })
-    setSentIds((ids) => [...ids, cue.id, ...grouped, ...passed])
+    onSendCue(cue.id)
+    setSentCue({ id: cue.id, at: Date.now() })
+    setSentIds((ids) => [...ids, cue.id])
   }
 
   // 다음 상황 자막: 추천 큐 바로 뒤의 상황 설명 줄(음향 · 암전 · 안내) 중 아직 송출하지 않은 첫 줄. 다음 대사 · 가사가 나오면 멈춘다
@@ -121,11 +121,6 @@ export function AssistScreen(props: Props) {
     }
     return undefined
   }, [cues, suggestId, sentIds])
-  const sendDesc = (cue: Cue) => {
-    onSendCue(cue.id, [], [])
-    setSentCue({ id: cue.id, grouped: [], passed: [], at: Date.now() })
-    setSentIds((ids) => [...ids, cue.id])
-  }
 
   // 휴대폰 미리보기: 가장 마지막에 송출한 것 (대본 큐 또는 애드리브 임시 자막)
   const lastTemp = sent[sent.length - 1]
@@ -179,7 +174,7 @@ export function AssistScreen(props: Props) {
           threshold={threshold}
           returnId={returnId}
           paused={noInput}
-          followerIds={[...suggestPassed, ...followers].map((f) => f.id)}
+          followerIds={followers.map((f) => f.id)}
           sentIds={sentIds}
           onJump={onJump}
         />
@@ -195,7 +190,6 @@ export function AssistScreen(props: Props) {
             sentIds={sentIds}
             deviating={deviating}
             onSend={sendCue}
-            onSendDesc={sendDesc}
           />
           <AdlibPanel
             deviationSince={deviating && deviation ? deviation.since : null}
@@ -205,8 +199,6 @@ export function AssistScreen(props: Props) {
           />
           <PhonePreview
             cue={!showTemp && sentCue ? cueById.get(sentCue.id) : undefined}
-            followers={!showTemp && sentCue ? sentCue.grouped.flatMap((id) => cueById.get(id) ?? []) : []}
-            passed={!showTemp && sentCue ? sentCue.passed.flatMap((id) => cueById.get(id) ?? []) : []}
             temp={showTemp ? lastTemp.text : undefined}
           />
           <DeviationTimeline log={deviationLog} now={now} />

@@ -56,7 +56,7 @@ const RECOGNITION_LOG_MAX = 300
 export interface EngineState {
   connection: Connection
   position: PositionUpdate | null
-  /** 지나간 줄 함께 띄우기: 지금 위치로 오면서 화면에 안 뜨고 지나간 줄. 위치가 다시 바뀌면 그 이동의 것으로 바뀐다 */
+  /** 지나간 줄: 지금 위치로 오면서 화면에 안 뜨고 지나간 줄. 위치가 다시 바뀌면 그 이동의 것으로 바뀐다 */
   passedIds: number[]
   /** 가장 최근 이탈 알림. 복귀하면 return_cue_id가 채워진 상태로 남는다. */
   deviation: DeviationAlert | null

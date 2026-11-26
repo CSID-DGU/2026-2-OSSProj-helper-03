@@ -11,7 +11,7 @@
 - session.end   {show_id}           : 멈춤
 - test.say {text}                   : 대사 입력 테스트 회차에서, 친 글자를 음성인식 결과 한 번으로 보고 추적
 - subtitle.send {text, source}      : 애드리브 임시 자막 송출 → 오롯플래닛 emergence 신호
-- cue.send {cue_id, grouped_ids?, passed_ids?} : 대본 큐 송출 (오퍼레이터가 확인하고 누름) → index 신호 (암전 줄은 blackout)
+- cue.send {cue_id}                 : 대본 큐 송출 (오퍼레이터가 확인하고 누름, 한 번에 한 줄) → index 신호 (암전 줄은 blackout)
       송출 신호는 HELPER_OUTPUT 채널로 보낸다 (engine/output.py). 기본 log 는 서버 로그와 회차 기록에만 남김
 - position.set {cue_id}             : 오퍼레이터 위치 맞추기 (추적 위치를 이 큐로, 이탈 판단도 여기서 다시)
 GET /session/audio : 진행 중인 녹음 재생 회차의 녹음 파일 (화면이 같은 녹음을 틀어 들으면서 볼 때)
@@ -311,14 +311,10 @@ async def ws_endpoint(ws: WebSocket):
                 if text:
                     send_signal(text_signal(text))
             elif kind == "cue.send":
-                # 대본 큐 송출: 오퍼레이터가 확인하고 누른 것 → 그 줄 번호 신호 (암전 줄은 화면 끄기).
-                # 함께 띄운 줄 · 지나간 줄을 관객 화면에 어떻게 보낼지는 정하는 중이라 기록만 (#46)
-                grouped, passed = msg.get("grouped_ids") or [], msg.get("passed_ids") or []
-                log.info("큐 송출: #%s%s%s", msg.get("cue_id"), f" 함께 {grouped}" if grouped else "",
-                         f" 지나간 줄 {passed}" if passed else "")
+                # 대본 큐 송출: 오퍼레이터가 확인하고 누른 줄 하나 → 그 줄 번호 신호 (암전 줄은 화면 끄기)
+                log.info("큐 송출: #%s", msg.get("cue_id"))
                 if pipe:
-                    pipe.record("send", cue=msg.get("cue_id"), grouped=msg.get("grouped_ids"),
-                                **({"passed": passed} if passed else {}))
+                    pipe.record("send", cue=msg.get("cue_id"))
                 try:
                     cue_id = int(msg.get("cue_id"))
                 except (TypeError, ValueError):
