@@ -10,8 +10,9 @@
 - (바이너리)                         : browser 회차에서 브라우저가 보낸 소리 (16kHz 모노 PCM16 조각)
 - session.end   {show_id}           : 멈춤
 - test.say {text}                   : 대사 입력 테스트 회차에서, 친 글자를 음성인식 결과 한 번으로 보고 추적
-- subtitle.send {text, source}      : 애드리브 임시 자막 송출. 송출 프로그램 연동 전이라 회차 기록 · 로그에만 남김
-- cue.send {cue_id, grouped_ids?, passed_ids?} : 대본 큐 송출 (오퍼레이터가 확인하고 누름). 연동 전이라 기록만
+- subtitle.send {text, source}      : 애드리브 임시 자막 송출 → 오롯플래닛 emergence 신호
+- cue.send {cue_id, grouped_ids?, passed_ids?} : 대본 큐 송출 (오퍼레이터가 확인하고 누름) → index 신호 (암전 줄은 blackout)
+      송출 신호는 HELPER_OUTPUT 채널로 보낸다 (engine/output.py). 기본 log 는 서버 로그와 회차 기록에만 남김
 - position.set {cue_id}             : 오퍼레이터 위치 맞추기 (추적 위치를 이 큐로, 이탈 판단도 여기서 다시)
 GET /session/audio : 진행 중인 녹음 재생 회차의 녹음 파일 (화면이 같은 녹음을 틀어 들으면서 볼 때)
 - settings.update {alert_threshold} : 지금은 기록만
@@ -39,6 +40,7 @@ from engine.aligner import parse_settings
 from engine.audio_input import MicSource, PushSource, TextSource, load_wav
 from engine.config import SRC, env, env_float, env_path
 from engine.cue_loader import load_cues, parse_cues
+from engine.output import OffChannel, Signal, cue_signal, make_channel, text_signal
 from engine.pipeline import Pipeline, TypedInput
 from engine.protocol import engine_error
 from engine.session_log import SessionLog
@@ -217,6 +219,20 @@ async def ws_endpoint(ws: WebSocket):
     send_task = asyncio.create_task(sender())
     pipe: Pipeline | None = None
     limit_task: asyncio.Task | None = None
+    try:
+        channel = make_channel()   # 송출 신호 채널 (HELPER_OUTPUT, engine/output.py)
+    except ValueError as ex:
+        log.error("%s. 송출 신호를 보내지 않음", ex)
+        channel = OffChannel()
+
+    def send_signal(signal: Signal):
+        try:
+            channel.send(signal)
+        except Exception as ex:   # 송출 채널이 실패해도 추적은 계속한다. 오퍼레이터는 기존 방식으로 송출
+            log.error("송출 신호 실패 (%s): %s", signal.kind, ex)
+            return
+        if pipe:
+            pipe.record("signal", signal=signal.kind, **signal.data())
 
     def stop_pipe():
         nonlocal pipe, limit_task
@@ -287,18 +303,29 @@ async def ws_endpoint(ws: WebSocket):
                 if not pipe or not pipe.jump_to(cue_id):
                     log.warning("position.set 무시: 회차가 없거나 모르는 큐 #%s", cue_id)
             elif kind == "subtitle.send":
-                # 애드리브 임시 자막: 송출 프로그램 연동(2단계) 전이라 기록만 남긴다
-                log.info("임시 자막 송출 (%s): %s", msg.get("source"), msg.get("text"))
+                # 애드리브 임시 자막 → 긴급 문구 신호 (emergence)
+                text = str(msg.get("text") or "").strip()
+                log.info("임시 자막 송출 (%s): %s", msg.get("source"), text)
                 if pipe:
                     pipe.record("subtitle", text=msg.get("text"), source=msg.get("source"))
+                if text:
+                    send_signal(text_signal(text))
             elif kind == "cue.send":
-                # 대본 큐 송출: 오퍼레이터가 확인하고 누른 것. 송출 프로그램 연동 전이라 기록만 남긴다
+                # 대본 큐 송출: 오퍼레이터가 확인하고 누른 것 → 그 줄 번호 신호 (암전 줄은 화면 끄기).
+                # 함께 띄운 줄 · 지나간 줄을 관객 화면에 어떻게 보낼지는 정하는 중이라 기록만 (#46)
                 grouped, passed = msg.get("grouped_ids") or [], msg.get("passed_ids") or []
                 log.info("큐 송출: #%s%s%s", msg.get("cue_id"), f" 함께 {grouped}" if grouped else "",
                          f" 지나간 줄 {passed}" if passed else "")
                 if pipe:
                     pipe.record("send", cue=msg.get("cue_id"), grouped=msg.get("grouped_ids"),
                                 **({"passed": passed} if passed else {}))
+                try:
+                    cue_id = int(msg.get("cue_id"))
+                except (TypeError, ValueError):
+                    log.warning("cue.send: cue_id 가 숫자가 아님: %s", msg)
+                    continue
+                cue = pipe.cues.get(cue_id) if pipe else None
+                send_signal(cue_signal(cue_id, cue.type if cue else None))
             elif kind == "settings.update":
                 log.info("설정 변경: %s", msg)
                 if pipe:

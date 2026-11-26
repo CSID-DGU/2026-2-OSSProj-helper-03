@@ -70,6 +70,7 @@ class Pipeline:
                  speed: float = 1.0, song_segment: bool = True, stt_workers: int | None = None,
                  aligner_kw: dict | None = None, record: Callable[..., None] | None = None):
         self.aligner = Aligner(cues, **(aligner_kw or {}))
+        self.cues = {c.id: c for c in cues}   # 전체 큐 (추적하지 않는 음향 · 암전 · 안내 포함. 송출 신호를 고를 때 유형을 봄)
         # 회차 기록 (engine/session_log.SessionLog). record(kind, **내용). 인식 스레드가 끝날 때 닫는다
         self.record = record or (lambda kind, **fields: None)
         self.detector = DeviationDetector(deviate_after)
