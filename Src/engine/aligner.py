@@ -131,6 +131,7 @@ class Step:
     skipped: tuple[Cue, ...] = ()  # 이번 이동으로 지나친 대사 중 최근 인식 글자에 없던 것 (누락 근거)
     again: bool = False    # 이미 들었던 앞 큐로 되돌아감 (반복 근거)
     passed: tuple[Cue, ...] = ()   # 이번 이동으로 지나친 줄 중 누락 근거가 없는 것 (화면이 송출 칸에 지나간 줄로 보여 줌)
+    head: int = 0          # 맞은 말이 현재 줄 처음에서 몇 자모 뒤부터인가 (0 = 줄을 처음부터 말함). 이탈 감지기가 반복과 추적기 보정을 가르는 데 씀
 
     @property
     def matched(self) -> bool:
@@ -406,7 +407,8 @@ class Aligner:
         self.heard.add(idx)
         if self.end_check and new_line:
             self.check_end = (idx, self.clock)
-        return Step("move" if idx != prev else "stay", self.current, score, cand, tuple(skipped), again, passed)
+        head = max(0, span[0] - self.starts[idx]) if span else 0
+        return Step("move" if idx != prev else "stay", self.current, score, cand, tuple(skipped), again, passed, head)
 
     def _check_new_line(self, t: str):
         """지난번에 새로 넘어간 줄을, 소리가 겹치는 이번 조각 글자로 확인한다 (end_check). 빈 결과면 다음 조각까지 기다리고,

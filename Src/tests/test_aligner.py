@@ -154,6 +154,18 @@ def test_going_back_to_a_heard_line_is_again(sample_cues):
     assert step.matched and al.current.id == lines[2].id and step.again
 
 
+def test_step_head_is_where_the_match_starts_in_the_line(sample_cues):
+    """Step.head: 줄을 처음부터 말했으면 0, 줄 중간부터 말했으면 그만큼 뒤 (이탈 감지기가 반복과 추적기 보정을 가름)."""
+    al = Aligner(sample_cues)
+    lines = dialogue(sample_cues)
+    assert al.update(lines[0].text).head == 0
+    text = lines[1].text
+    step = al.update(text[len(text) // 2:])
+    assert step.matched and al.current.id == lines[1].id and step.head > 6
+    step = al.update(lines[2].text)
+    assert step.matched and al.current.id == lines[2].id and step.head == 0
+
+
 def _scene_cues(with_scene: bool):
     from engine.cue_loader import parse_cues
     words = ["처음 인사를 드립니다", "오늘은 날씨가 맑네요", "점심은 무엇을 먹을까", "저녁에는 비가 온대요",

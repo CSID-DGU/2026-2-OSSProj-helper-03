@@ -220,6 +220,54 @@ def test_deviation_metrics_match_alerts_to_truth(sample_cues):
     assert len(res["false"]) == 1 and res["false"][0]["t0"] == 70.0
 
 
+def walk(d, *ids, dt=1000):
+    """대본대로 한 줄씩 진행 (한 번에 1큐)."""
+    for k, i in enumerate(ids):
+        d.update(move(i), i, k * dt)
+
+
+def back(cue_id, head):
+    """들었던 앞 줄로 돌아감. head = 맞은 말이 그 줄 처음에서 몇 자모 뒤부터인가."""
+    return Step("move", Cue(cue_id, cue_id, "dialogue", "", "x"), 90, again=True, head=head)
+
+
+def test_bounce_back_to_middle_of_line_is_not_repeat():
+    """짧은 말에 2큐 넘게 앞으로 갔다가 바로 원래 줄 중간으로 돌아옴 = 추적기 보정 (2차 데이터 16초)."""
+    d = DeviationDetector()
+    walk(d, 1, 2, 3)
+    d.update(move(5), 5, 3000)
+    assert d.update(back(3, head=10), 3, 4000) is None
+
+
+def test_bounce_back_to_line_in_between_is_not_repeat():
+    """앞으로 건너뛴 사이 줄로 돌아옴 (2차 데이터 707초)."""
+    d = DeviationDetector()
+    walk(d, 1, 2, 3)
+    d.update(move(6), 6, 3000)
+    assert d.update(back(4, head=0), 4, 5000) is None
+
+
+def test_restarting_the_line_after_a_jump_is_repeat():
+    """앞으로 갔다 돌아와도 그 줄을 처음부터 다시 말하면 반복 (이탈 녹음 B1)."""
+    d = DeviationDetector()
+    walk(d, 1, 2)
+    d.update(move(4), 4, 2000)
+    alert = d.update(back(2, head=0), 2, 5500)
+    assert alert.deviation_type == "repeat" and alert.return_cue_id == 2
+
+
+def test_bounce_only_right_after_the_jump():
+    d = DeviationDetector()
+    walk(d, 1, 2, 3)
+    d.update(move(5), 5, 3000)
+    alert = d.update(back(3, head=10), 3, 9500)   # 앞으로 간 지 6초 넘음
+    assert alert.deviation_type == "repeat"
+    off = DeviationDetector(bounce_sec=0)
+    walk(off, 1, 2, 3)
+    off.update(move(5), 5, 3000)
+    assert off.update(back(3, head=10), 3, 4000).deviation_type == "repeat"
+
+
 def test_repeat_while_staying_on_the_line():
     """추적기가 같은 줄에 머물러도 반복이 확인되면(Step.again, repeat_confirm) 반복 알림."""
     d = DeviationDetector()

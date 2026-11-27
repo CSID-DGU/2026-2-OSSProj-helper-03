@@ -15,6 +15,9 @@
 - 이탈 없이 바로 건너뜀 (안 들린 대사 skip_min ~ skip_max 개를 지나쳐 이동) → skip 알림 하나 (복귀 큐 포함)
   그보다 크게 건너뛰거나, 마지막으로 맞은 지 skip_recent 초가 넘었으면 (인식이 놓친 것일 수 있음) 알림 없이 로그만
 - 이미 들었던 앞 대사로 되돌아감 (위치 추적기가 두 번 확인한 뒤로 이동) → repeat 알림 하나
+  단, 추적기가 2큐 넘게 앞으로 간 뒤 bounce_sec 초 안에 돌아왔고, 돌아온 곳이 원래 줄의 중간(bounce_head 자모 넘게 뒤)이거나
+  그 사이 줄이면 추적기가 짧은 말에 잘못 뛰었다가 바로잡은 것으로 보고 반복 알림을 내지 않는다.
+  진짜 반복은 돌아간 줄을 처음부터 다시 말한다 (2차 데이터 잘못된 반복 2건, 이탈 녹음 B1 은 그대로 찾음)
 
 이탈이 시작될 때는 유형을 아직 모른다. 화면(protocol.ts)은 시작 알림에도 유형이 필요해서
 임시로 START_TYPE 을 보내고, 복귀 알림에 진짜 유형을 보낸다 (화면은 복귀 알림으로 덮어씀).
@@ -44,7 +47,8 @@ class Alert:
 class DeviationDetector:
     def __init__(self, deviate_after_sec: float = 3.0, min_misses: int = 2, skip_min: int = 2, skip_max: int = 6,
                  skip_recent_sec: float = 10.0, repeat: bool = True, silence_sec: float = 4.0,
-                 quiet_level: float = 0.1, song_score: float = 60.0, near_score: float = 55.0):
+                 quiet_level: float = 0.1, song_score: float = 60.0, near_score: float = 55.0,
+                 bounce_sec: float = 6.0, bounce_head: int = 6):
         self.after_ms = int(deviate_after_sec * 1000)
         self.min_misses = min_misses
         self.skip_min = skip_min                 # 안 들린 대사를 이만큼 지나치면 누락 (0 = 누락 바로 알림 안 함)
@@ -55,6 +59,8 @@ class DeviationDetector:
         self.quiet_level = quiet_level           # tick() 음량이 이 아래면 조용함
         self.song_score = song_score             # 안 맞은 말이 가사와 이 점수 넘게 비슷하면 노래로 봄 (0 = 안 씀)
         self.near_score = near_score             # 안 맞은 말이 현재 · 다음 큐와 이만큼 비슷하면 이탈 근거로 안 씀 (0 = 안 씀)
+        self.bounce_ms = int(bounce_sec * 1000)  # 앞으로 뛴 뒤 이 안에 원래 줄 중간 · 사이 줄로 돌아오면 반복 아님 (0 = 안 씀)
+        self.bounce_head = bounce_head           # 원래 줄로 돌아왔을 때 줄 처음에서 이만큼(자모) 넘게 뒤면 줄 중간
         self.state = "normal"
         self.since: int | None = None            # 처음 안 맞기 시작한 시각
         self.misses = 0
@@ -63,6 +69,7 @@ class DeviationDetector:
         self.last_lyric = False                  # 마지막으로 맞은 큐가 가사였나
         self.last_heard: int | None = None       # 마지막으로 말소리가 들린 시각
         self.loud_at: int | None = None          # 마지막으로 소리가 있던 시각 (tick)
+        self.jump: tuple[int, int] | None = None  # 2큐 넘게 앞으로 간 (시각, 뛰기 전 위치)
 
     @property
     def deviating(self) -> bool:
@@ -71,6 +78,7 @@ class DeviationDetector:
     def reset(self, idx: int = 0):
         self._set("normal")
         self.since, self.misses, self.last_idx, self.last_match, self.last_lyric = None, 0, idx, None, False
+        self.jump = None
 
     def _set(self, state: str):
         if state != self.state:
@@ -122,6 +130,9 @@ class DeviationDetector:
         d = idx - self.last_idx
         skipped = self.skip_min and len(step.skipped) >= self.skip_min
         alert = None
+        if self.jump and now_ms - self.jump[0] > self.bounce_ms:
+            self.jump = None
+        jump, bounce = self.jump, self._bounce(step, idx, d)
         if self.deviating:
             if self.skip_min:
                 kind = "skip" if skipped else "repeat" if d < 0 or step.again else "adlib"
@@ -138,7 +149,14 @@ class DeviationDetector:
             elif skipped:
                 log.info("큰 이동 %d큐 (안 들린 대사 %d개): 알림 없음", d, len(step.skipped))
             elif self.repeat and d <= 0 and step.again and not hold:   # 같은 줄에 머물러도 반복이 확인되면 (repeat_confirm)
-                alert = Alert("repeat", since, step.cue.id)
+                if bounce:
+                    log.info("앞으로 뛰었다가 줄 중간 · 사이 줄로 돌아옴 (추적기 보정): 반복 알림 없음")
+                else:
+                    alert = Alert("repeat", since, step.cue.id)
+        if bounce:
+            self.jump = None
+        elif self.bounce_ms and not self.deviating and d >= 2 and jump is None and self.last_match is not None:
+            self.jump = (now_ms, self.last_idx)
         if alert:
             log.info("이탈 %s: 복귀 #%s (%d큐 이동)", alert.deviation_type, alert.return_cue_id, d)
         self.since, self.misses, self.last_idx = None, 0, idx
@@ -146,6 +164,12 @@ class DeviationDetector:
         self.last_lyric = step.cue.type == "lyric"
         self._set("song" if hold else "normal")
         return alert
+
+    def _bounce(self, step: Step, idx: int, d: int) -> bool:
+        """2큐 넘게 앞으로 간 뒤 bounce_sec 안에, 뛰기 전 줄의 중간이나 그 사이 줄로 돌아왔나 (추적기가 잘못 뛰었다 바로잡음)."""
+        if not self.jump or self.deviating or d >= 0 or idx < self.jump[1]:
+            return False
+        return idx > self.jump[1] or step.head > self.bounce_head
 
     def tick(self, now_ms: int, level: float):
         """상태 스레드에서 1초마다: 소리가 silence_sec 넘게 거의 없으면 입력 없음 (알림은 보내지 않는다)."""
